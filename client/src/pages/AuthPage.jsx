@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { signup, login, saveSession } from "../lib/api";
 
 const T = {
   navy:     "#07112B",
@@ -309,6 +310,10 @@ body{
   color:${T.err};letter-spacing:.2px;
 }
 
+.ap-form-err{
+  background:rgba(214,80,80,.1); border:1px solid rgba(214,80,80,.35);
+  color:#e28b8b; font-size:.85rem; padding:.6rem .8rem; border-radius:8px;
+}
 .ap-forgot{text-align:right;margin-top:-.25rem}
 .ap-forgot button{
   background:none;border:none;cursor:pointer;padding:0;
@@ -486,12 +491,25 @@ function ActorForm({ onSuccess }) {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setL(false); onSuccess("actor");
+    try {
+      const { token, user } = await signup({
+        role: "actor",
+        name: f.name,
+        age: f.age,
+        email: f.email,
+        phone: f.phone,
+        password: f.pass,
+      });
+      saveSession({ token, user });
+      setL(false); onSuccess("actor", user);
+    } catch (err) {
+      setL(false); setErrs({ form: err.message });
+    }
   };
 
   return (
     <div className="ap-form">
+      {errs.form && <div className="ap-form-err">{errs.form}</div>}
       <div className="ap-row">
         <Field label="Full Name" value={f.name} onChange={set("name")} placeholder="Aarav Sharma" error={errs.name} />
         <Field label="Age" type="number" value={f.age} onChange={set("age")} placeholder="24" error={errs.age} />
@@ -533,12 +551,25 @@ function ProducerForm({ onSuccess }) {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setL(false); onSuccess("producer");
+    try {
+      const { token, user } = await signup({
+        role: "producer",
+        name: f.name,
+        company: f.company,
+        email: f.email,
+        phone: f.phone,
+        password: f.pass,
+      });
+      saveSession({ token, user });
+      setL(false); onSuccess("producer", user);
+    } catch (err) {
+      setL(false); setErrs({ form: err.message });
+    }
   };
 
   return (
     <div className="ap-form">
+      {errs.form && <div className="ap-form-err">{errs.form}</div>}
       <div className="ap-row">
         <Field label="Your Name" value={f.name} onChange={set("name")} placeholder="Ramesh Thapa" error={errs.name} />
         <Field label="Company" value={f.company} onChange={set("company")} placeholder="XYZ Films" error={errs.company} />
@@ -571,12 +602,18 @@ function LoginForm({ onSuccess }) {
     if (!f.pass)                e.pass  = "Password is required";
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setL(false); onSuccess("login");
+    try {
+      const { token, user } = await login({ email: f.email, password: f.pass });
+      saveSession({ token, user });
+      setL(false); onSuccess("login", user);
+    } catch (err) {
+      setL(false); setErrs({ form: err.message });
+    }
   };
 
   return (
     <div className="ap-form">
+      {errs.form && <div className="ap-form-err">{errs.form}</div>}
       <Field label="Email" type="email" value={f.email} onChange={set("email")} placeholder="you@example.com" error={errs.email} />
       <Field label="Password" type={showP ? "text" : "password"} value={f.pass} onChange={set("pass")} placeholder="Your password" error={errs.pass}>
         <Eye show={showP} onToggle={() => setShowP((s) => !s)} />
@@ -623,6 +660,7 @@ export default function AuthPage({
   initialTab        = "signup",
   onBack,
   onHome,
+  onAuthSuccess,
 }) {
   const [tab,     setTab]     = useState(initialTab);
   const [role,    setRole]    = useState(initialRole);
@@ -632,6 +670,16 @@ export default function AuthPage({
 
   const switchTab = (t) => { setSuccess(null); setTab(t); };
   const flipRole  = ()  => { setSuccess(null); setRole((r) => r === "actor" ? "producer" : "actor"); };
+
+  // Called by ActorForm / ProducerForm / LoginForm once the API call succeeds.
+  // Shows the success screen briefly, then hands off to the router so it can
+  // send actors to /actor-dashboard and producers to /producer-dashboard.
+  const handleAuthed = (type, user) => {
+    setSuccess(type);
+    setTimeout(() => {
+      onAuthSuccess?.(user);
+    }, 1200);
+  };
 
   const leftOver = tab === "signup" ? `Joining as ${cfg.label}` : "Welcome back";
   const leftH    = tab === "signup"
@@ -724,9 +772,9 @@ export default function AuthPage({
                 </div>
 
                 {/* forms — role-aware */}
-                {tab === "signup" && role === "actor"    && <ActorForm    onSuccess={setSuccess} />}
-                {tab === "signup" && role === "producer" && <ProducerForm onSuccess={setSuccess} />}
-                {tab === "login"                         && <LoginForm    onSuccess={setSuccess} />}
+                {tab === "signup" && role === "actor"    && <ActorForm    onSuccess={handleAuthed} />}
+                {tab === "signup" && role === "producer" && <ProducerForm onSuccess={handleAuthed} />}
+                {tab === "login"                         && <LoginForm    onSuccess={handleAuthed} />}
 
                 <div className="ap-or">
                   <div className="ap-or-line" />
