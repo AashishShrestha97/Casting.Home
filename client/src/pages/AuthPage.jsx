@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signup, login, saveSession } from "../lib/api";
+import { signupActor, signupProducer, loginActor, loginProducer, saveSession } from "../lib/api";
 
 const T = {
   navy:     "#07112B",
@@ -492,8 +492,7 @@ function ActorForm({ onSuccess }) {
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
     try {
-      const { token, user } = await signup({
-        role: "actor",
+      const { token, user } = await signupActor({
         name: f.name,
         age: f.age,
         email: f.email,
@@ -552,8 +551,7 @@ function ProducerForm({ onSuccess }) {
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
     try {
-      const { token, user } = await signup({
-        role: "producer",
+      const { token, user } = await signupProducer({
         name: f.name,
         company: f.company,
         email: f.email,
@@ -589,7 +587,7 @@ function ProducerForm({ onSuccess }) {
 }
 
 /* ── Login form ── */
-function LoginForm({ onSuccess }) {
+function LoginForm({ onSuccess, role }) {
   const [f, setF]         = useState({ email:"", pass:"" });
   const [showP, setShowP] = useState(false);
   const [errs, setErrs]   = useState({});
@@ -603,7 +601,10 @@ function LoginForm({ onSuccess }) {
     if (Object.keys(e).length) { setErrs(e); return; }
     setErrs({}); setL(true);
     try {
-      const { token, user } = await login({ email: f.email, password: f.pass });
+      // role-scoped: actor login only ever checks the actors table,
+      // producer login only ever checks the producers table.
+      const apiCall = role === "producer" ? loginProducer : loginActor;
+      const { token, user } = await apiCall({ email: f.email, password: f.pass });
       saveSession({ token, user });
       setL(false); onSuccess("login", user);
     } catch (err) {
@@ -630,11 +631,11 @@ function LoginForm({ onSuccess }) {
 }
 
 /* ── Success screen ── */
-function SuccessScreen({ type }) {
+function SuccessScreen({ type, role }) {
   const map = {
     actor:    { icon:"🎭", h:["Profile","created!"],  p:"Your actor profile is live. Our team will review it and match you with the right productions." },
     producer: { icon:"🎬", h:["Account","ready!"],    p:"Your producer account is set up. Post your first casting call and we'll get to work." },
-    login:    { icon:"✦",  h:["Welcome","back!"],     p:"You're signed in. Redirecting you to your dashboard shortly." },
+    login:    { icon:"✦",  h:["Welcome","back!"],     p:`You're signed in. Redirecting you to your ${role} dashboard shortly.` },
   };
   const m = map[type];
   return (
@@ -709,21 +710,22 @@ export default function AuthPage({
             <h2 className="ap-left-h">{leftH}</h2>
             <p className="ap-left-p">{leftP}</p>
 
+            {/* role badge shows on BOTH tabs — logging in is just as
+                role-scoped as signing up, so it should never be ambiguous
+                which account system (actor vs producer) is active */}
+            <div className="ap-role-badge">
+              <span>{cfg.icon}</span>
+              {cfg.label} account
+            </div>
             {tab === "signup" && (
-              <>
-                <div className="ap-role-badge">
-                  <span>{cfg.icon}</span>
-                  {cfg.label} account
-                </div>
-                <div className="ap-feats">
-                  {cfg.feats.map((feat) => (
-                    <div className="ap-feat" key={feat}>
-                      <span className="ap-feat-dash">—</span>
-                      {feat}
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div className="ap-feats">
+                {cfg.feats.map((feat) => (
+                  <div className="ap-feat" key={feat}>
+                    <span className="ap-feat-dash">—</span>
+                    {feat}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -748,7 +750,7 @@ export default function AuthPage({
             </div>
 
             {success ? (
-              <SuccessScreen type={success} />
+              <SuccessScreen type={success} role={role} />
             ) : (
               <>
                 {/* heading */}
@@ -766,15 +768,22 @@ export default function AuthPage({
                   ) : (
                     <>
                       <div className="ap-head-title">Welcome <em>back</em></div>
-                      <p className="ap-head-sub">Sign in to your Casting.Home account.</p>
+                      <p className="ap-head-sub">
+                        Signing in as {role === "actor" ? "an" : "a"} {cfg.label.toLowerCase()}.
+                        <button onClick={flipRole}>
+                          Switch to {role === "actor" ? "Producer" : "Actor"}
+                        </button>
+                      </p>
                     </>
                   )}
                 </div>
 
-                {/* forms — role-aware */}
+                {/* forms — role-aware. Each form only ever talks to its
+                    own role's endpoint (actor forms -> /api/auth/actor/*,
+                    producer forms -> /api/auth/producer/*) */}
                 {tab === "signup" && role === "actor"    && <ActorForm    onSuccess={handleAuthed} />}
                 {tab === "signup" && role === "producer" && <ProducerForm onSuccess={handleAuthed} />}
-                {tab === "login"                         && <LoginForm    onSuccess={handleAuthed} />}
+                {tab === "login"                         && <LoginForm    onSuccess={handleAuthed} role={role} />}
 
                 <div className="ap-or">
                   <div className="ap-or-line" />

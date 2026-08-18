@@ -19,15 +19,35 @@ async function request(path, options = {}) {
   return data;
 }
 
-export function signup({ role, name, email, phone, password, age, company }) {
-  return request("/api/auth/signup", {
+// Two fully separate auth systems — actor calls only ever hit
+// /api/auth/actor/*, producer calls only ever hit /api/auth/producer/*.
+// There is no shared signup/login function on purpose: mixing them up
+// here is exactly what would let a role's credentials leak into the
+// wrong table's request.
+
+export function signupActor({ name, email, phone, password, age }) {
+  return request("/api/auth/actor/signup", {
     method: "POST",
-    body: JSON.stringify({ role, name, email, phone, password, age, company }),
+    body: JSON.stringify({ name, email, phone, password, age }),
   });
 }
 
-export function login({ email, password }) {
-  return request("/api/auth/login", {
+export function loginActor({ email, password }) {
+  return request("/api/auth/actor/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function signupProducer({ name, email, phone, password, company }) {
+  return request("/api/auth/producer/signup", {
+    method: "POST",
+    body: JSON.stringify({ name, email, phone, password, company }),
+  });
+}
+
+export function loginProducer({ email, password }) {
+  return request("/api/auth/producer/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });

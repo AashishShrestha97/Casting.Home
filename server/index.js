@@ -1,7 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const authRoutes = require("./routes/auth");
+const actorAuthRoutes = require("./routes/actorAuth");
+const producerAuthRoutes = require("./routes/producerAuth");
 
 if (!process.env.JWT_SECRET) {
   console.error("Missing JWT_SECRET in .env — copy .env.example to .env and set it.");
@@ -17,7 +18,9 @@ app.get("/", (req, res) => {
   res.send("Server Running");
 });
 
-app.use("/api/auth", authRoutes);
+// Two fully separate auth systems — never share a route, a table, or a token shape.
+app.use("/api/auth/actor", actorAuthRoutes);
+app.use("/api/auth/producer", producerAuthRoutes);
 
 // 404 fallback
 app.use((req, res) => {

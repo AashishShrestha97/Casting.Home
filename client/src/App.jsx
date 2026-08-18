@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, Navigate } from "react-router-dom";
 import CastingHome from "./pages/LandingPage";
 import RoleSelection from "./pages/RoleSelection";
