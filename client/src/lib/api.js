@@ -2,8 +2,11 @@ const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   });
 
   let data = null;
@@ -17,6 +20,19 @@ async function request(path, options = {}) {
     throw new Error(data?.error || "Something went wrong. Please try again.");
   }
   return data;
+}
+
+// Same as request(), but attaches the current session's Bearer token —
+// for endpoints that require a logged-in actor or producer.
+function authedRequest(path, options = {}) {
+  const session = getSession();
+  return request(path, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
+    },
+  });
 }
 
 // Two fully separate auth systems — actor calls only ever hit
@@ -72,4 +88,51 @@ export function getSession() {
 export function clearSession() {
   localStorage.removeItem("ch_token");
   localStorage.removeItem("ch_user");
+}
+
+// ── Actor profile (extended fields — height, city, experience, etc) ──
+
+export function getActorProfile() {
+  return authedRequest("/api/actor/profile");
+}
+
+export function updateActorProfile(fields) {
+  return authedRequest("/api/actor/profile", {
+    method: "PUT",
+    body: JSON.stringify(fields),
+  });
+}
+
+// ── Producer's casting calls ──
+// Creating one also triggers an admin email notification server-side
+// (see server/lib/mailer.js) for manual review and actor matching.
+
+export function createCastingCall(fields) {
+  return authedRequest("/api/producer/casting-calls", {
+    method: "POST",
+    body: JSON.stringify(fields),
+  });
+}
+
+export function listMyCastingCalls() {
+  return authedRequest("/api/producer/casting-calls");
+}
+
+export function updateCastingCall(id, fields) {
+  return authedRequest(`/api/producer/casting-calls/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(fields),
+  });
+}
+
+export function toggleCastingCallStatus(id) {
+  return authedRequest(`/api/producer/casting-calls/${id}/status`, {
+    method: "PATCH",
+  });
+}
+
+export function deleteCastingCall(id) {
+  return authedRequest(`/api/producer/casting-calls/${id}`, {
+    method: "DELETE",
+  });
 }

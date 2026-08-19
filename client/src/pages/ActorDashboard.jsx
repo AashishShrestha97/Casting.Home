@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { getSession, clearSession } from "../lib/api";
+import { getSession, clearSession, getActorProfile, updateActorProfile } from "../lib/api";
 
 const T = {
   navy:     "#07112B",
@@ -950,6 +950,9 @@ const INITIAL_CONVERSATIONS = [
 /* ── main component ── */
 export default function ActorDashboard() {
   const session = getSession();
+  // localStorage here is just a fast local cache so the page never looks
+  // blank while the real profile loads from the database — the database
+  // (via /api/actor/profile) is the actual source of truth.
   const storageKey = `ch_actor_profile:${session?.user?.id ?? "guest"}`;
   const applicationsKey = `ch_actor_applications:${session?.user?.id ?? "guest"}`;
   const notifKey = `ch_actor_notifications:${session?.user?.id ?? "guest"}`;
@@ -976,6 +979,45 @@ export default function ActorDashboard() {
     const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
     return saved?.social || { type: "instagram", url: "" };
   });
+  const [saving, setSaving] = useState(false);
+
+  // Load the real profile from Postgres on mount. This is the source of
+  // truth — the localStorage-seeded state above only prevents a blank
+  // flash while this request is in flight. If the request fails (e.g.
+  // backend not running), we quietly keep the local cache instead.
+  useEffect(() => {
+    let cancelled = false;
+    getActorProfile()
+      .then(({ profile }) => {
+        if (cancelled || !profile) return;
+        setInfo({
+          fullName: profile.name || "",
+          age: profile.age ? String(profile.age) : "",
+          height: profile.height || "",
+          gender: profile.gender || "male",
+          phone: profile.phone || "",
+          city: profile.city || "",
+          experience: profile.experience || "",
+        });
+        setSocial({
+          type: profile.socialType || "instagram",
+          url: profile.socialUrl || "",
+        });
+        // Photos/video: there's no persistent file storage wired up yet,
+        // so only overwrite a slot if the server actually has a saved
+        // URL for it — otherwise leave whatever local preview is showing.
+        setPhotos((p) => ({
+          right: profile.photoRightUrl || p.right,
+          front: profile.photoFrontUrl || p.front,
+          left:  profile.photoLeftUrl  || p.left,
+        }));
+        if (profile.videoUrl) setVideo(profile.videoUrl);
+      })
+      .catch((err) => {
+        console.warn("Could not load profile from server, using local cache:", err.message);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [activeNav, setActiveNav] = useState("profile");
   const [showPreview, setShowPreview] = useState(false);
@@ -1040,9 +1082,36 @@ export default function ActorDashboard() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Cache locally right away so a reload never looks blank, even if
+    // the network request below is slow or fails.
     localStorage.setItem(storageKey, JSON.stringify({ info, photos, video, social }));
-    showToast("✓ Changes saved");
+    setSaving(true);
+    try {
+      await updateActorProfile({
+        fullName: info.fullName,
+        age: info.age,
+        phone: info.phone,
+        height: info.height,
+        gender: info.gender,
+        city: info.city,
+        experience: info.experience,
+        // Only real http(s) URLs are persisted server-side — local
+        // blob: previews are dropped there since there's no file
+        // storage backend yet (see actor_profiles schema comment).
+        photoRightUrl: photos.right,
+        photoFrontUrl: photos.front,
+        photoLeftUrl: photos.left,
+        videoUrl: video,
+        socialType: social.type,
+        socialUrl: social.url,
+      });
+      showToast("✓ Changes saved");
+    } catch (err) {
+      showToast(err.message || "Couldn't save to the server — kept locally", true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSignOut = () => {
@@ -1187,8 +1256,8 @@ export default function ActorDashboard() {
                 <button className="btn-ghost-sm" onClick={() => setShowPreview(true)}>
                   Preview
                 </button>
-                <button className="btn-solid-sm" onClick={handleSave}>
-                  Save changes
+                <button className="btn-solid-sm" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving…" : "Save changes"}
                 </button>
               </div>
             )}
@@ -1301,6 +1370,7 @@ export default function ActorDashboard() {
                   </div>
                   <p className="ad-hint" style={{ marginTop:".85rem" }}>
                     Clear, well-lit photos. JPEG or PNG, max 5 MB each.
+                    Uploads preview locally for now — persistent photo storage is coming soon.
                   </p>
                 </Section>
 

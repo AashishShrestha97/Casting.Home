@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { getSession, clearSession } from "../lib/api";
+import {
+  getSession, clearSession,
+  createCastingCall, listMyCastingCalls, updateCastingCall,
+  toggleCastingCallStatus, deleteCastingCall,
+} from "../lib/api";
 
 const T = {
   navy:     "#07112B",
@@ -17,6 +21,8 @@ const T = {
   faint:    "rgba(244,239,230,0.05)",
   green:    "#4a9b6f",
   greenPale:"rgba(74,155,111,0.12)",
+  amber:    "#c9a24a",
+  amberPale:"rgba(201,162,74,0.12)",
   red:      "#c9615f",
   redPale:  "rgba(201,97,95,0.1)",
 };
@@ -40,12 +46,11 @@ body {
 ::-webkit-scrollbar-track { background:${T.navy}; }
 ::-webkit-scrollbar-thumb { background:rgba(59,125,216,.4); border-radius:2px; }
 
-@keyframes fadeUp { from{opacity:0;transform:translateY(18px);} to{opacity:1;transform:translateY(0);} }
-@keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
-@keyframes shimmer { from{background-position:-500px 0;} to{background-position:500px 0;} }
-@keyframes dotPulse { 0%,100%{opacity:.5;transform:scale(1);} 50%{opacity:1;transform:scale(1.25);} }
-@keyframes toastIn { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:translateY(0);} }
-@keyframes spin { to{transform:rotate(360deg);} }
+@keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes shimmer { from { background-position:-500px 0; } to { background-position:500px 0; } }
+@keyframes dotPulse { 0%,100% { opacity:.5;transform:scale(1); } 50% { opacity:1;transform:scale(1.25); } }
+@keyframes toastIn { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
 
 /* ════════════ LAYOUT ════════════ */
 .pd-layout { display:grid; grid-template-columns:220px 1fr; min-height:100vh; }
@@ -54,562 +59,356 @@ body {
 .pd-sidebar {
   background:${T.navyCard}; border-right:1px solid ${T.divider};
   display:flex; flex-direction:column;
-  position:sticky; top:0; height:100vh; overflow-y:auto; z-index:100;
-  animation:fadeIn .5s ease both;
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+  z-index:100; animation:fadeIn .5s ease both;
 }
 .pd-logo {
   padding:1.6rem 1.5rem 1.4rem; border-bottom:1px solid ${T.divider};
   display:flex; align-items:center; gap:11px; cursor:pointer; flex-shrink:0;
 }
 .pd-logo-mark {
-  width:32px; height:32px; border:1px solid rgba(59,125,216,.38);
-  display:flex; align-items:center; justify-content:center; flex-shrink:0; position:relative;
+  width:32px;height:32px; border:1px solid rgba(59,125,216,.38);
+  display:flex;align-items:center;justify-content:center; flex-shrink:0; position:relative;
 }
-.pd-logo-mark::after { content:''; position:absolute; inset:3px; border:1px solid rgba(59,125,216,.1); }
-.pd-logo-mark span { font-family:'DM Serif Display',serif; font-size:16px; color:${T.blue}; position:relative; z-index:1; }
-.pd-logo-name { font-family:'DM Serif Display',serif; font-size:17px; color:${T.cream}; letter-spacing:.1px; }
-.pd-logo-name em { font-style:normal; color:${T.blue}; }
+.pd-logo-mark::after { content:'';position:absolute;inset:3px;border:1px solid rgba(59,125,216,.1); }
+.pd-logo-mark span { font-family:'DM Serif Display',serif;font-size:16px;color:${T.blue};position:relative;z-index:1; }
+.pd-logo-name { font-family:'DM Serif Display',serif;font-size:17px;color:${T.cream};letter-spacing:.1px; }
+.pd-logo-name em { font-style:normal;color:${T.blue}; }
 
-.pd-prod-card { padding:1.4rem 1.5rem; border-bottom:1px solid ${T.divider}; flex-shrink:0; }
+.pd-company-card { padding:1.4rem 1.5rem; border-bottom:1px solid ${T.divider}; flex-shrink:0; }
 .pd-avatar {
-  width:48px; height:48px; border-radius:50%; border:1px solid ${T.blueDim}; background:${T.bluePale};
-  display:flex; align-items:center; justify-content:center; font-size:20px; margin-bottom:.75rem;
+  width:48px;height:48px;border-radius:10px;
+  border:1px solid ${T.blueDim};background:${T.bluePale};
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  margin-bottom:.75rem; overflow:hidden;
 }
-.pd-prod-name {
-  font-family:'DM Serif Display',serif; font-size:15px; font-weight:400; color:${T.cream};
-  margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+.pd-avatar img { width:100%;height:100%;object-fit:cover; }
+.pd-company-name {
+  font-family:'DM Serif Display',serif;font-size:15px;font-weight:400;color:${T.cream};
+  margin-bottom:3px; white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.pd-prod-role { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:${T.blue}; opacity:.7; }
+.pd-company-role { font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:${T.blue};opacity:.7; }
 
-.pd-stats { padding:1.1rem 1.5rem; border-bottom:1px solid ${T.divider}; flex-shrink:0; display:flex; gap:1rem; }
-.pd-stat { flex:1; }
-.pd-stat-num { font-family:'DM Serif Display',serif; font-size:20px; color:${T.blueLt}; line-height:1; margin-bottom:4px; }
-.pd-stat-lbl { font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:rgba(244,239,230,.28); }
+.pd-completion { padding:1.1rem 1.5rem; border-bottom:1px solid ${T.divider}; flex-shrink:0; }
+.pd-completion-row { display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px; }
+.pd-completion-label { font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(244,239,230,.28); }
+.pd-completion-pct { font-family:'DM Serif Display',serif;font-size:15px;color:${T.blueLt}; }
+.pd-bar-bg { height:2px;background:rgba(244,239,230,.07);overflow:hidden; }
+.pd-bar-fill { height:100%;background:linear-gradient(to right,${T.blue},${T.blueLt});transition:width .8s cubic-bezier(.22,1,.36,1); }
 
-.pd-nav { flex:1; padding:.75rem 0; overflow-y:auto; }
-.pd-nav-section { padding:.5rem 1.5rem .3rem; font-size:9px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(244,239,230,.18); margin-top:.4rem; }
+.pd-nav { flex:1;padding:.75rem 0;overflow-y:auto; }
+.pd-nav-section { padding:.5rem 1.5rem .3rem;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(244,239,230,.18);margin-top:.4rem; }
 .pd-nav-item {
-  display:flex; align-items:center; gap:10px; padding:9px 1.5rem;
-  font-size:13px; font-weight:400; color:rgba(244,239,230,.4);
-  cursor:pointer; transition:color .2s,background .2s; border-left:2px solid transparent; position:relative;
+  display:flex;align-items:center;gap:10px;padding:9px 1.5rem;font-size:13px;font-weight:400;
+  color:rgba(244,239,230,.4);cursor:pointer;transition:color .2s,background .2s;
+  border-left:2px solid transparent;position:relative;
 }
-.pd-nav-item:hover { color:rgba(244,239,230,.7); background:${T.faint}; }
-.pd-nav-item.on { color:${T.blueLt}; background:${T.bluePale}; border-left-color:${T.blue}; }
-.pd-nav-icon { font-size:14px; width:16px; text-align:center; flex-shrink:0; }
-.pd-nav-badge { margin-left:auto; background:${T.blue}; color:#fff; font-size:10px; font-weight:500; padding:1px 7px; letter-spacing:.3px; }
+.pd-nav-item:hover { color:rgba(244,239,230,.7);background:${T.faint}; }
+.pd-nav-item.on { color:${T.blueLt};background:${T.bluePale};border-left-color:${T.blue}; }
+.pd-nav-icon { font-size:14px;width:16px;text-align:center;flex-shrink:0; }
+.pd-nav-badge { margin-left:auto;background:${T.blue};color:#fff;font-size:10px;font-weight:500;padding:1px 7px;letter-spacing:.3px; }
 
-.pd-sidebar-foot { padding:1.1rem 1.5rem; border-top:1px solid ${T.divider}; flex-shrink:0; }
+.pd-sidebar-foot { padding:1.1rem 1.5rem;border-top:1px solid ${T.divider};flex-shrink:0; }
 .pd-signout {
-  display:flex; align-items:center; gap:8px; font-size:12px; font-weight:300; color:rgba(244,239,230,.25);
-  background:none; border:none; cursor:pointer; font-family:'Outfit',sans-serif; transition:color .2s; padding:0; letter-spacing:.3px;
+  display:flex;align-items:center;gap:8px;font-size:12px;font-weight:300;color:rgba(244,239,230,.25);
+  background:none;border:none;cursor:pointer;font-family:'Outfit',sans-serif;
+  transition:color .2s;padding:0;letter-spacing:.3px;
 }
 .pd-signout:hover { color:rgba(200,80,80,.8); }
 
-/* ════════════ MOBILE MENU ════════════ */
-.pd-mobile-toggle {
-  display:none; align-items:center; justify-content:center; padding:0; background:none;
-  border:none; color:${T.cream}; cursor:pointer; font-size:22px; width:44px; height:44px;
-  flex-shrink:0; transition:color .2s; border-radius:4px;
-}
-.pd-mobile-toggle:hover { color:${T.blueLt}; background:rgba(59,125,216,.1); }
-.pd-mobile-toggle:active { transform:scale(0.95); }
-.pd-mobile-overlay {
-  display:none; position:fixed; top:0; left:0; right:0; bottom:0; 
-  background:rgba(0,0,0,.5); z-index:140; backdrop-filter:blur(2px);
-}
-.pd-mobile-overlay.open { display:block; }
-
 /* ════════════ MAIN ════════════ */
-.pd-main { display:flex; flex-direction:column; min-height:100vh; overflow-x:hidden; }
+.pd-main { display:flex;flex-direction:column;min-height:100vh;overflow-x:hidden; }
 .pd-topbar {
-  padding:1.1rem 2.5rem; border-bottom:1px solid ${T.divider};
-  display:flex; justify-content:flex-start; align-items:center;
-  background:${T.navy}; position:sticky; top:0; z-index:50; animation:fadeIn .5s ease both; gap:1rem;
+  padding:1.1rem 2.5rem;border-bottom:1px solid ${T.divider};
+  display:flex;justify-content:space-between;align-items:center;background:${T.navy};
+  position:sticky;top:0;z-index:50;animation:fadeIn .5s ease both;gap:1rem;
 }
-.pd-topbar-title { font-family:'DM Serif Display',serif; font-size:22px; font-weight:400; color:${T.cream}; white-space:nowrap; flex:1; }
-.pd-topbar-title em { font-style:italic; color:${T.blue}; }
-.pd-topbar-actions { display:flex; align-items:center; gap:.85rem; flex-shrink:0; margin-left:auto; }
+.pd-topbar-title { font-family:'DM Serif Display',serif;font-size:22px;font-weight:400;color:${T.cream}; }
+.pd-topbar-title em { font-style:italic;color:${T.blue}; }
+.pd-topbar-actions { display:flex;align-items:center;gap:.85rem;flex-shrink:0; }
 
 .btn-ghost-sm {
-  display:flex; align-items:center; gap:7px; padding:8px 18px; border:1px solid ${T.divider}; background:transparent;
-  font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:1.6px; text-transform:uppercase;
-  font-weight:400; color:rgba(244,239,230,.45); cursor:pointer; transition:border-color .22s,color .22s;
+  display:flex;align-items:center;gap:7px;padding:8px 18px;border:1px solid ${T.divider};background:transparent;
+  font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;
+  font-weight:400;color:rgba(244,239,230,.45);cursor:pointer;transition:border-color .22s,color .22s;
 }
-.btn-ghost-sm:hover { border-color:rgba(59,125,216,.4); color:${T.cream}; }
+.btn-ghost-sm:hover { border-color:rgba(59,125,216,.4);color:${T.cream}; }
 
 .btn-solid-sm {
-  position:relative; overflow:hidden; padding:8px 20px; background:${T.blue}; border:none;
-  font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:1.6px; text-transform:uppercase;
-  font-weight:500; color:#fff; cursor:pointer; transition:transform .24s,box-shadow .24s;
+  position:relative;overflow:hidden;padding:8px 20px;background:${T.blue};border:none;
+  font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;
+  font-weight:500;color:#fff;cursor:pointer;transition:transform .24s,box-shadow .24s;
 }
 .btn-solid-sm::after {
-  content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);
-  background-size:500px 100%; opacity:0; transition:opacity .24s;
+  content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);
+  background-size:500px 100%;opacity:0;transition:opacity .24s;
 }
-.btn-solid-sm:hover { transform:translateY(-1px); box-shadow:0 10px 30px rgba(59,125,216,.28); }
-.btn-solid-sm:hover::after { opacity:1; animation:shimmer .7s linear; }
-.btn-solid-sm:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+.btn-solid-sm:hover { transform:translateY(-1px);box-shadow:0 10px 30px rgba(59,125,216,.28); }
+.btn-solid-sm:hover::after { opacity:1;animation:shimmer .7s linear; }
+.btn-solid-sm:disabled { opacity:.4;cursor:not-allowed;transform:none;box-shadow:none; }
 
 .btn-danger-sm {
-  padding:8px 20px; background:transparent; border:1px solid rgba(201,97,95,.4);
-  font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:1.6px; text-transform:uppercase;
-  font-weight:500; color:${T.red}; cursor:pointer; transition:background .22s,border-color .22s;
+  padding:8px 20px;background:transparent;border:1px solid rgba(201,97,95,.4);
+  font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;
+  font-weight:500;color:${T.red};cursor:pointer;transition:background .22s,border-color .22s;
 }
-.btn-danger-sm:hover { background:${T.redPale}; border-color:${T.red}; }
+.btn-danger-sm:hover { background:${T.redPale};border-color:${T.red}; }
 
 /* ════════════ CONTENT ════════════ */
-.pd-content { padding:2.25rem 2.5rem; flex:1; animation:fadeUp .55s cubic-bezier(.22,1,.36,1) .08s both; }
+.pd-content { padding:2.25rem 2.5rem;flex:1;animation:fadeUp .55s cubic-bezier(.22,1,.36,1) .08s both; }
 
 .pd-alert {
-  display:flex; align-items:flex-start; gap:12px; padding:1rem 1.4rem;
-  border:1px solid rgba(59,125,216,.2); background:${T.bluePale}; margin-bottom:2rem;
-  font-size:13px; font-weight:300; color:rgba(244,239,230,.5); line-height:1.6;
+  display:flex;align-items:flex-start;gap:12px;padding:1rem 1.4rem;
+  border:1px solid rgba(59,125,216,.2);background:${T.bluePale};margin-bottom:2rem;
+  font-size:13px;font-weight:300;color:rgba(244,239,230,.5);line-height:1.6;
 }
-.pd-alert-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
-.pd-alert strong { color:${T.blueLt}; font-weight:500; }
+.pd-alert-icon { font-size:14px;flex-shrink:0;margin-top:1px; }
+.pd-alert strong { color:${T.blueLt};font-weight:500; }
 
-/* ════════════ SECTION CARD ════════════ */
-.pd-section { background:${T.navyCard}; border:1px solid ${T.divider}; margin-bottom:1.25rem; overflow:hidden; transition:border-color .28s; }
+/* ════════════ STAT CARDS ════════════ */
+.pd-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem; }
+.pd-stat {
+  background:${T.navyCard};border:1px solid ${T.divider};padding:1.25rem 1.4rem;
+  transition:border-color .25s;
+}
+.pd-stat:hover { border-color:rgba(59,125,216,.22); }
+.pd-stat-num { font-family:'DM Serif Display',serif;font-size:26px;color:${T.blueLt};margin-bottom:2px; }
+.pd-stat-label { font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(244,239,230,.32); }
+
+/* ════════════ SECTION CARD (profile accordion) ════════════ */
+.pd-section { background:${T.navyCard};border:1px solid ${T.divider};margin-bottom:1.25rem;overflow:hidden;transition:border-color .28s; }
 .pd-section:hover { border-color:rgba(59,125,216,.18); }
 .pd-section-head {
-  display:flex; align-items:center; justify-content:space-between; padding:1.25rem 1.6rem;
-  border-bottom:1px solid transparent; cursor:pointer; user-select:none; transition:background .22s;
+  display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.6rem;
+  border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background .22s;
 }
 .pd-section-head:hover { background:${T.faint}; }
 .pd-section-head.open { border-bottom-color:${T.divider}; }
-.pd-section-left { display:flex; align-items:center; gap:12px; }
+.pd-section-left { display:flex;align-items:center;gap:12px; }
 .pd-section-icon-box {
-  width:36px; height:36px; border:1px solid ${T.divider};
-  display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
-  transition:border-color .25s,background .25s;
+  width:36px;height:36px;border:1px solid ${T.divider};display:flex;align-items:center;justify-content:center;
+  font-size:15px;flex-shrink:0;transition:border-color .25s,background .25s;
 }
-.pd-section-head:hover .pd-section-icon-box, .pd-section-head.open .pd-section-icon-box {
-  border-color:rgba(59,125,216,.3); background:${T.bluePale};
-}
-.pd-section-title { font-family:'DM Serif Display',serif; font-size:16px; font-weight:400; color:${T.cream}; margin-bottom:2px; }
-.pd-section-sub { font-size:11px; font-weight:300; color:rgba(244,239,230,.28); }
-.pd-section-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
-.pd-status-dot { width:6px; height:6px; border-radius:50%; }
+.pd-section-head:hover .pd-section-icon-box, .pd-section-head.open .pd-section-icon-box { border-color:rgba(59,125,216,.3);background:${T.bluePale}; }
+.pd-section-title { font-family:'DM Serif Display',serif;font-size:16px;font-weight:400;color:${T.cream};margin-bottom:2px; }
+.pd-section-sub { font-size:11px;font-weight:300;color:rgba(244,239,230,.28); }
+.pd-section-right { display:flex;align-items:center;gap:10px;flex-shrink:0; }
+.pd-status-dot { width:6px;height:6px;border-radius:50%; }
 .pd-status-dot.done { background:#4a9b6f; }
-.pd-status-dot.partial { background:${T.blue}; animation:dotPulse 2.5s ease-in-out infinite; }
+.pd-status-dot.partial { background:${T.blue};animation:dotPulse 2.5s ease-in-out infinite; }
 .pd-status-dot.empty { background:rgba(244,239,230,.12); }
-.pd-status-text { font-size:10px; letter-spacing:.5px; color:rgba(244,239,230,.25); }
-.pd-chevron { font-size:10px; color:rgba(244,239,230,.2); transition:transform .28s cubic-bezier(.22,1,.36,1); }
+.pd-status-text { font-size:10px;letter-spacing:.5px;color:rgba(244,239,230,.25); }
+.pd-chevron { font-size:10px;color:rgba(244,239,230,.2);transition:transform .28s cubic-bezier(.22,1,.36,1); }
 .pd-chevron.open { transform:rotate(180deg); }
 .pd-section-body { padding:1.6rem; }
 
 /* ════════════ FORM ELEMENTS ════════════ */
 .pd-field { margin-bottom:1.1rem; }
 .pd-field:last-child { margin-bottom:0; }
-.pd-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.1rem; }
+.pd-grid-2 { display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.1rem; }
 .pd-grid-2:last-child { margin-bottom:0; }
-.pd-label { display:block; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:500; color:rgba(244,239,230,.3); margin-bottom:6px; }
-.pd-optional { text-transform:none; letter-spacing:0; font-weight:300; color:rgba(244,239,230,.2); }
+.pd-grid-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.1rem; }
+
+.pd-label { display:block;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:500;color:rgba(244,239,230,.3);margin-bottom:6px; }
 .pd-input {
-  width:100%; padding:10px 12px; background:${T.navyMid}; border:1px solid rgba(244,239,230,.07);
-  font-family:'Outfit',sans-serif; font-size:13.5px; font-weight:300; color:${T.cream}; outline:none;
-  transition:border-color .22s,background .22s; -webkit-font-smoothing:antialiased;
+  width:100%;padding:10px 12px;background:${T.navyMid};border:1px solid rgba(244,239,230,.07);
+  font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:300;color:${T.cream};outline:none;
+  transition:border-color .22s,background .22s;
 }
 .pd-input::placeholder { color:rgba(244,239,230,.18); }
-.pd-input:focus { border-color:rgba(59,125,216,.5); background:${T.navyLite}; }
-.pd-input:disabled { color:rgba(244,239,230,.35); cursor:not-allowed; }
+.pd-input:focus { border-color:rgba(59,125,216,.5);background:${T.navyLite}; }
+.pd-input:disabled { color:rgba(244,239,230,.35);cursor:not-allowed; }
+
 .pd-textarea {
-  width:100%; padding:10px 12px; background:${T.navyMid}; border:1px solid rgba(244,239,230,.07);
-  font-family:'Outfit',sans-serif; font-size:13.5px; font-weight:300; color:${T.cream}; outline:none;
-  resize:vertical; min-height:100px; line-height:1.7; transition:border-color .22s,background .22s;
+  width:100%;padding:10px 12px;background:${T.navyMid};border:1px solid rgba(244,239,230,.07);
+  font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:300;color:${T.cream};outline:none;
+  resize:vertical;min-height:100px;line-height:1.7;transition:border-color .22s,background .22s;
 }
 .pd-textarea::placeholder { color:rgba(244,239,230,.18); }
-.pd-textarea:focus { border-color:rgba(59,125,216,.5); background:${T.navyLite}; }
-.pd-hint { font-size:11px; font-weight:300; color:rgba(244,239,230,.22); margin-top:.5rem; line-height:1.6; }
-.pd-error { font-size:11px; font-weight:400; color:${T.red}; margin-top:.5rem; }
+.pd-textarea:focus { border-color:rgba(59,125,216,.5);background:${T.navyLite}; }
 
-/* ════════════ CHIP SELECTORS ════════════ */
-.pd-chips { display:flex; flex-wrap:wrap; gap:.5rem; }
-.pd-chip {
-  padding:8px 15px; border:1px solid ${T.divider}; background:transparent;
-  font-family:'Outfit',sans-serif; font-size:12px; font-weight:400; color:rgba(244,239,230,.45);
-  cursor:pointer; transition:all .2s; white-space:nowrap;
+.pd-select {
+  width:100%;padding:10px 12px;background:${T.navyMid};border:1px solid rgba(244,239,230,.07);
+  font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:300;color:${T.cream};outline:none;cursor:pointer;
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(59,125,216,0.5)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;transition:border-color .22s;
 }
-.pd-chip:hover { border-color:rgba(59,125,216,.4); color:${T.cream}; }
-.pd-chip.on { border-color:${T.blue}; color:${T.blueLt}; background:${T.bluePale}; }
+.pd-select:focus { border-color:rgba(59,125,216,.5); }
+.pd-select option { background:${T.navyCard}; }
+.pd-hint { font-size:11px;font-weight:300;color:rgba(244,239,230,.22);margin-top:.5rem;line-height:1.6; }
+.pd-error { font-size:11px;font-weight:400;color:${T.red};margin-top:.5rem; }
 
-/* ════════════ CALL FORM ════════════ */
-.pd-callform { animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both; }
-.pd-callform-actions { display:flex; justify-content:flex-end; gap:.75rem; margin-top:1.5rem; padding-top:1.4rem; border-top:1px solid ${T.divider}; }
-
-/* ════════════ CASTING CALLS ════════════ */
-.pd-cc-toolbar { display:flex; gap:.85rem; margin-bottom:1.5rem; flex-wrap:wrap; }
-.pd-cc-search { flex:1; min-width:200px; }
-.pd-cc-filters { display:flex; gap:.5rem; flex-wrap:wrap; }
-.pd-cc-filter-btn {
-  padding:8px 16px; border:1px solid ${T.divider}; background:transparent;
-  font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:1px; text-transform:uppercase;
-  color:rgba(244,239,230,.4); cursor:pointer; transition:all .2s; white-space:nowrap;
+/* logo upload (single slot) */
+.pd-logo-slot {
+  width:120px;aspect-ratio:1;border:1px dashed rgba(59,125,216,.2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+  background:${T.navyMid};position:relative;overflow:hidden;transition:border-color .28s,background .28s;
 }
-.pd-cc-filter-btn:hover { border-color:rgba(59,125,216,.35); color:${T.cream}; }
-.pd-cc-filter-btn.on { border-color:${T.blue}; color:${T.blueLt}; background:${T.bluePale}; }
-
-.pd-cc-grid { display:flex; flex-direction:column; gap:1rem; }
-.pd-cc-card { background:${T.navyCard}; border:1px solid ${T.divider}; padding:1.5rem 1.75rem; transition:border-color .25s; }
-.pd-cc-card:hover { border-color:rgba(59,125,216,.22); }
-.pd-cc-card.closed { opacity:.55; }
-.pd-cc-top { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:.75rem; }
-.pd-cc-title-wrap { flex:1; }
-.pd-cc-title { font-family:'DM Serif Display',serif; font-size:17px; font-weight:400; color:${T.cream}; margin-bottom:3px; }
-.pd-cc-role { font-size:12px; font-weight:300; color:${T.blueLt}; }
-.pd-cc-badges { display:flex; gap:.5rem; flex-shrink:0; align-items:center; }
-.pd-cc-type { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:rgba(244,239,230,.4); border:1px solid ${T.divider}; padding:4px 10px; white-space:nowrap; }
-.pd-cc-statusbadge { font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:4px 10px; font-weight:500; white-space:nowrap; }
-.pd-cc-statusbadge.open { color:${T.green}; border:1px solid rgba(74,155,111,.35); background:${T.greenPale}; }
-.pd-cc-statusbadge.closed { color:rgba(244,239,230,.4); border:1px solid ${T.divider}; }
-.pd-cc-meta { display:flex; gap:1.25rem; flex-wrap:wrap; font-size:12px; color:rgba(244,239,230,.35); margin-bottom:.85rem; }
-.pd-cc-meta span { display:flex; align-items:center; gap:5px; }
-.pd-cc-desc { font-size:13px; font-weight:300; line-height:1.7; color:rgba(244,239,230,.5); margin-bottom:1rem; }
-.pd-cc-tags { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1.1rem; }
-.pd-cc-tag { font-size:10px; letter-spacing:.5px; padding:3px 9px; background:${T.faint}; border:1px solid ${T.divider}; color:rgba(244,239,230,.4); }
-.pd-cc-foot { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; padding-top:1rem; border-top:1px solid ${T.divider}; }
-.pd-cc-subs { font-size:11.5px; color:rgba(244,239,230,.3); }
-.pd-cc-subs strong { color:rgba(244,239,230,.55); font-weight:500; }
-.pd-cc-actions { display:flex; gap:.5rem; }
-.pd-cc-iconbtn {
-  padding:6px 14px; border:1px solid ${T.divider}; background:transparent;
-  font-family:'Outfit',sans-serif; font-size:11px; letter-spacing:.5px;
-  color:rgba(244,239,230,.45); cursor:pointer; transition:all .2s;
+.pd-logo-slot:hover { border-color:rgba(59,125,216,.5);background:${T.navyLite}; }
+.pd-logo-slot.filled { border-style:solid;border-color:rgba(59,125,216,.3); }
+.pd-logo-slot input[type=file] { position:absolute;inset:0;opacity:0;cursor:pointer; }
+.pd-logo-preview { width:100%;height:100%;object-fit:cover;position:absolute;inset:0; }
+.pd-logo-overlay {
+  position:absolute;inset:0;background:rgba(7,17,43,.7);display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .28s;
 }
-.pd-cc-iconbtn:hover { border-color:rgba(59,125,216,.4); color:${T.cream}; }
-.pd-cc-iconbtn.danger:hover { border-color:rgba(201,97,95,.5); color:${T.red}; background:${T.redPale}; }
-.pd-cc-empty { text-align:center; padding:3.5rem 1rem; color:rgba(244,239,230,.28); font-size:13px; }
-.pd-cc-empty-cta { margin-top:1.2rem; }
-
-/* ════════════ SUBMISSIONS ════════════ */
-.pd-sub-card { background:${T.navyCard}; border:1px solid ${T.divider}; padding:1.3rem 1.6rem; margin-bottom:1rem; }
-.pd-sub-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem; gap:1rem; }
-.pd-sub-title { font-family:'DM Serif Display',serif; font-size:15px; font-weight:400; color:${T.cream}; }
-.pd-sub-count { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:rgba(244,239,230,.3); }
-.pd-sub-empty { font-size:12.5px; font-weight:300; color:rgba(244,239,230,.32); line-height:1.6; }
+.pd-logo-slot:hover .pd-logo-overlay { opacity:1; }
+.pd-logo-plus { font-size:18px;color:rgba(244,239,230,.35); }
+.pd-logo-lbl { font-size:10px;letter-spacing:1px;text-transform:uppercase;color:rgba(244,239,230,.4);text-align:center; }
+.pd-logo-change { font-size:10px;letter-spacing:1px;text-transform:uppercase;color:${T.blueLt};font-weight:500; }
 
 /* ════════════ MODAL ════════════ */
 .pd-modal-bg {
-  position:fixed; inset:0; z-index:200; background:rgba(4,10,20,.88);
-  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  display:flex; align-items:center; justify-content:center; padding:2rem; animation:fadeIn .28s ease both;
+  position:fixed;inset:0;z-index:200;background:rgba(4,10,20,.88);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:flex;align-items:center;justify-content:center;padding:2rem;animation:fadeIn .28s ease both;
+  overflow-y:auto;
 }
-.pd-modal { background:${T.navyCard}; border:1px solid ${T.divider}; width:100%; max-width:440px; max-height:85vh; overflow-y:auto; animation:fadeUp .35s cubic-bezier(.22,1,.36,1) both; }
-.pd-modal-head { padding:1.3rem 1.6rem; border-bottom:1px solid ${T.divider}; display:flex; justify-content:space-between; align-items:center; }
-.pd-modal-title { font-family:'DM Serif Display',serif; font-size:18px; font-weight:400; color:${T.cream}; }
-.pd-modal-close { background:none; border:none; color:rgba(244,239,230,.25); font-size:18px; cursor:pointer; transition:color .2s; padding:0; line-height:1; }
+.pd-modal {
+  background:${T.navyCard};border:1px solid ${T.divider};width:100%;max-width:560px;
+  max-height:88vh;overflow-y:auto;animation:fadeUp .35s cubic-bezier(.22,1,.36,1) both;
+}
+.pd-modal-head { padding:1.3rem 1.6rem;border-bottom:1px solid ${T.divider};display:flex;justify-content:space-between;align-items:center; }
+.pd-modal-title { font-family:'DM Serif Display',serif;font-size:18px;font-weight:400;color:${T.cream}; }
+.pd-modal-close { background:none;border:none;color:rgba(244,239,230,.25);font-size:18px;cursor:pointer;transition:color .2s;padding:0;line-height:1; }
 .pd-modal-close:hover { color:${T.cream}; }
-.pd-modal-body { padding:1.75rem; font-size:13px; font-weight:300; color:rgba(244,239,230,.55); line-height:1.7; }
-.pd-modal-actions { display:flex; justify-content:flex-end; gap:.75rem; margin-top:1.5rem; }
+.pd-modal-body { padding:1.75rem; }
 
 /* ════════════ TOAST ════════════ */
 .pd-toast {
-  position:fixed; bottom:2rem; right:2rem; z-index:300; display:flex; align-items:center; gap:9px;
-  padding:11px 18px; background:${T.navyCard}; border:1px solid rgba(74,155,111,.35);
-  font-size:12px; font-weight:300; color:rgba(150,210,170,.9); letter-spacing:.3px;
-  animation:toastIn .35s cubic-bezier(.22,1,.36,1) both; box-shadow:0 8px 32px rgba(0,0,0,.4);
+  position:fixed;bottom:2rem;right:2rem;z-index:300;display:flex;align-items:center;gap:9px;
+  padding:11px 18px;background:${T.navyCard};border:1px solid rgba(74,155,111,.35);
+  font-size:12px;font-weight:300;color:rgba(150,210,170,.9);letter-spacing:.3px;
+  animation:toastIn .35s cubic-bezier(.22,1,.36,1) both;box-shadow:0 8px 32px rgba(0,0,0,.4);
 }
-.pd-toast.err { border-color:rgba(201,97,95,.4); color:rgba(230,160,158,.95); }
+.pd-toast.err { border-color:rgba(201,97,95,.4);color:rgba(230,160,158,.95); }
+
+/* ════════════ CASTING CALLS (producer's own) ════════════ */
+.pd-cc-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;gap:1rem;flex-wrap:wrap; }
+.pd-cc-grid { display:flex;flex-direction:column;gap:1rem; }
+.pd-cc-card { background:${T.navyCard};border:1px solid ${T.divider};padding:1.5rem 1.75rem;transition:border-color .25s; }
+.pd-cc-card:hover { border-color:rgba(59,125,216,.22); }
+.pd-cc-top { display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:.75rem; }
+.pd-cc-title-wrap { flex:1; }
+.pd-cc-title { font-family:'DM Serif Display',serif;font-size:17px;font-weight:400;color:${T.cream};margin-bottom:3px; }
+.pd-cc-prod { font-size:12px;font-weight:300;color:${T.blueLt}; }
+.pd-cc-status {
+  flex-shrink:0;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:4px 10px;border:1px solid transparent;
+}
+.pd-cc-status.open { color:${T.green};background:${T.greenPale};border-color:rgba(74,155,111,.3); }
+.pd-cc-status.closed { color:rgba(244,239,230,.35);background:${T.faint};border-color:${T.divider}; }
+.pd-cc-meta { display:flex;gap:1.25rem;flex-wrap:wrap;font-size:12px;color:rgba(244,239,230,.35);margin-bottom:.85rem; }
+.pd-cc-meta span { display:flex;align-items:center;gap:5px; }
+.pd-cc-desc { font-size:13px;font-weight:300;line-height:1.7;color:rgba(244,239,230,.5);margin-bottom:1rem; }
+.pd-cc-tags { display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1.1rem; }
+.pd-cc-tag { font-size:10px;letter-spacing:.5px;padding:3px 9px;background:${T.faint};border:1px solid ${T.divider};color:rgba(244,239,230,.4); }
+.pd-cc-foot { display:flex;justify-content:space-between;align-items:center;padding-top:1rem;border-top:1px solid ${T.divider};gap:.75rem;flex-wrap:wrap; }
+.pd-cc-applicants-count { font-size:11px;color:rgba(244,239,230,.35); }
+.pd-cc-applicants-count strong { color:${T.blueLt};font-weight:500; }
+.pd-cc-actions { display:flex;gap:.5rem; }
+.pd-cc-empty { text-align:center;padding:3.5rem 1rem;color:rgba(244,239,230,.28);font-size:13px; }
+.pd-cc-empty-cta { margin-top:1rem; }
+
+/* ════════════ APPLICANTS ════════════ */
+.pd-app-filters { display:flex;gap:.6rem;margin-bottom:1.5rem;flex-wrap:wrap; }
+.pd-app-filter-btn {
+  padding:8px 16px;border:1px solid ${T.divider};background:transparent;font-family:'Outfit',sans-serif;
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(244,239,230,.4);cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.pd-app-filter-btn:hover { border-color:rgba(59,125,216,.35);color:${T.cream}; }
+.pd-app-filter-btn.on { border-color:${T.blue};color:${T.blueLt};background:${T.bluePale}; }
+
+.pd-app-grid { display:flex;flex-direction:column;gap:.85rem; }
+.pd-app-card { background:${T.navyCard};border:1px solid ${T.divider};padding:1.25rem 1.5rem;display:flex;gap:1.1rem;align-items:flex-start;transition:border-color .25s; }
+.pd-app-card:hover { border-color:rgba(59,125,216,.2); }
+.pd-app-avatar {
+  width:52px;height:52px;border-radius:50%;flex-shrink:0;border:1px solid ${T.blueDim};background:${T.bluePale};
+  display:flex;align-items:center;justify-content:center;font-size:22px;
+}
+.pd-app-info { flex:1;min-width:0; }
+.pd-app-top { display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:4px; }
+.pd-app-name { font-family:'DM Serif Display',serif;font-size:15.5px;color:${T.cream}; }
+.pd-app-for { font-size:11px;color:rgba(244,239,230,.32);margin-bottom:6px; }
+.pd-app-for strong { color:${T.blueLt};font-weight:500; }
+.pd-app-meta { display:flex;gap:1rem;font-size:11.5px;color:rgba(244,239,230,.4);margin-bottom:8px;flex-wrap:wrap; }
+.pd-app-note { font-size:12.5px;font-weight:300;color:rgba(244,239,230,.48);line-height:1.65;margin-bottom:10px; }
+.pd-app-actions { display:flex;gap:.5rem;flex-wrap:wrap; }
+.pd-app-status-badge {
+  font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:4px 10px;font-weight:500;flex-shrink:0;
+}
+.pd-app-status-badge.new       { color:${T.blueLt};background:${T.bluePale}; }
+.pd-app-status-badge.shortlist { color:${T.amber};background:${T.amberPale}; }
+.pd-app-status-badge.accepted  { color:${T.green};background:${T.greenPale}; }
+.pd-app-status-badge.declined  { color:rgba(244,239,230,.32);background:${T.faint}; }
+.pd-app-empty { text-align:center;padding:3.5rem 1rem;color:rgba(244,239,230,.28);font-size:13px; }
 
 /* ════════════ MESSAGES ════════════ */
-.pd-msg-layout { display:grid; grid-template-columns:280px 1fr; background:${T.navyCard}; border:1px solid ${T.divider}; height:calc(100vh - 180px); min-height:420px; }
-.pd-msg-list { border-right:1px solid ${T.divider}; overflow-y:auto; }
-.pd-msg-item { display:flex; gap:.75rem; padding:1rem 1.25rem; border-bottom:1px solid ${T.divider}; cursor:pointer; transition:background .2s; position:relative; }
+.pd-msg-layout { display:grid;grid-template-columns:280px 1fr;background:${T.navyCard};border:1px solid ${T.divider};height:calc(100vh - 180px);min-height:420px; }
+.pd-msg-list { border-right:1px solid ${T.divider};overflow-y:auto; }
+.pd-msg-item { display:flex;gap:.75rem;padding:1rem 1.25rem;border-bottom:1px solid ${T.divider};cursor:pointer;transition:background .2s;position:relative; }
 .pd-msg-item:hover { background:${T.faint}; }
 .pd-msg-item.on { background:${T.bluePale}; }
-.pd-msg-avatar { width:38px; height:38px; border-radius:50%; flex-shrink:0; border:1px solid ${T.blueDim}; background:${T.bluePale}; display:flex; align-items:center; justify-content:center; font-size:16px; }
-.pd-msg-info { flex:1; min-width:0; }
-.pd-msg-name { font-size:13px; font-weight:500; color:${T.cream}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; }
-.pd-msg-role { font-size:10.5px; color:rgba(244,239,230,.32); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px; }
-.pd-msg-preview { font-size:11.5px; color:rgba(244,239,230,.42); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pd-msg-dot { width:8px; height:8px; border-radius:50%; background:${T.blue}; position:absolute; top:1.15rem; right:1rem; }
-.pd-thread { display:flex; flex-direction:column; height:100%; }
-.pd-thread-head { padding:1.1rem 1.5rem; border-bottom:1px solid ${T.divider}; display:flex; align-items:center; gap:.75rem; flex-shrink:0; }
-.pd-thread-body { flex:1; overflow-y:auto; padding:1.5rem; display:flex; flex-direction:column; gap:.9rem; }
-.pd-bubble { max-width:65%; padding:10px 14px; font-size:13px; font-weight:300; line-height:1.6; }
-.pd-bubble.them { align-self:flex-start; background:${T.navyMid}; border:1px solid ${T.divider}; color:rgba(244,239,230,.75); }
-.pd-bubble.me { align-self:flex-end; background:${T.blue}; color:#fff; }
-.pd-bubble-time { font-size:10px; margin-top:4px; opacity:.5; }
-.pd-thread-empty { flex:1; display:flex; align-items:center; justify-content:center; color:rgba(244,239,230,.25); font-size:13px; }
-.pd-thread-input { display:flex; gap:.6rem; padding:1rem 1.25rem; border-top:1px solid ${T.divider}; flex-shrink:0; }
-.pd-thread-input input { flex:1; padding:10px 14px; background:${T.navyMid}; border:1px solid rgba(244,239,230,.07); color:${T.cream}; font-family:'Outfit',sans-serif; font-size:13px; outline:none; }
+.pd-msg-avatar { width:38px;height:38px;border-radius:50%;flex-shrink:0;border:1px solid ${T.blueDim};background:${T.bluePale};display:flex;align-items:center;justify-content:center;font-size:16px; }
+.pd-msg-info { flex:1;min-width:0; }
+.pd-msg-name { font-size:13px;font-weight:500;color:${T.cream};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px; }
+.pd-msg-role { font-size:10.5px;color:rgba(244,239,230,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px; }
+.pd-msg-preview { font-size:11.5px;color:rgba(244,239,230,.42);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.pd-msg-dot { width:8px;height:8px;border-radius:50%;background:${T.blue};position:absolute;top:1.15rem;right:1rem; }
+.pd-thread { display:flex;flex-direction:column;height:100%; }
+.pd-thread-head { padding:1.1rem 1.5rem;border-bottom:1px solid ${T.divider};display:flex;align-items:center;gap:.75rem;flex-shrink:0; }
+.pd-thread-body { flex:1;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:.9rem; }
+.pd-bubble { max-width:65%;padding:10px 14px;font-size:13px;font-weight:300;line-height:1.6; }
+.pd-bubble.them { align-self:flex-start;background:${T.navyMid};border:1px solid ${T.divider};color:rgba(244,239,230,.75); }
+.pd-bubble.me { align-self:flex-end;background:${T.blue};color:#fff; }
+.pd-bubble-time { font-size:10px;margin-top:4px;opacity:.5; }
+.pd-thread-empty { flex:1;display:flex;align-items:center;justify-content:center;color:rgba(244,239,230,.25);font-size:13px; }
+.pd-thread-input { display:flex;gap:.6rem;padding:1rem 1.25rem;border-top:1px solid ${T.divider};flex-shrink:0; }
+.pd-thread-input input { flex:1;padding:10px 14px;background:${T.navyMid};border:1px solid rgba(244,239,230,.07);color:${T.cream};font-family:'Outfit',sans-serif;font-size:13px;outline:none; }
 .pd-thread-input input:focus { border-color:rgba(59,125,216,.5); }
 
 /* ════════════ SETTINGS ════════════ */
-.pd-settings-section { background:${T.navyCard}; border:1px solid ${T.divider}; padding:1.6rem 1.75rem; margin-bottom:1.25rem; }
-.pd-settings-title { font-family:'DM Serif Display',serif; font-size:16px; font-weight:400; color:${T.cream}; margin-bottom:.25rem; }
-.pd-settings-sub { font-size:11.5px; font-weight:300; color:rgba(244,239,230,.32); margin-bottom:1.4rem; }
-.pd-toggle-row { display:flex; justify-content:space-between; align-items:center; padding:.85rem 0; border-bottom:1px solid ${T.divider}; }
-.pd-toggle-row:last-child { border-bottom:none; padding-bottom:0; }
+.pd-settings-section { background:${T.navyCard};border:1px solid ${T.divider};padding:1.6rem 1.75rem;margin-bottom:1.25rem; }
+.pd-settings-title { font-family:'DM Serif Display',serif;font-size:16px;font-weight:400;color:${T.cream};margin-bottom:.25rem; }
+.pd-settings-sub { font-size:11.5px;font-weight:300;color:rgba(244,239,230,.32);margin-bottom:1.4rem; }
+.pd-toggle-row { display:flex;justify-content:space-between;align-items:center;padding:.85rem 0;border-bottom:1px solid ${T.divider}; }
+.pd-toggle-row:last-child { border-bottom:none;padding-bottom:0; }
 .pd-toggle-row:first-child { padding-top:0; }
-.pd-toggle-label { font-size:13px; color:rgba(244,239,230,.7); margin-bottom:2px; }
-.pd-toggle-desc { font-size:11px; color:rgba(244,239,230,.3); }
-.pd-switch { width:38px; height:21px; border-radius:11px; background:rgba(244,239,230,.1); border:1px solid ${T.divider}; position:relative; cursor:pointer; flex-shrink:0; transition:background .22s; }
-.pd-switch.on { background:${T.blue}; border-color:${T.blue}; }
-.pd-switch-knob { width:15px; height:15px; border-radius:50%; background:#fff; position:absolute; top:2px; left:2px; transition:transform .22s; }
+.pd-toggle-label { font-size:13px;color:rgba(244,239,230,.7);margin-bottom:2px; }
+.pd-toggle-desc { font-size:11px;color:rgba(244,239,230,.3); }
+.pd-switch { width:38px;height:21px;border-radius:11px;background:rgba(244,239,230,.1);border:1px solid ${T.divider};position:relative;cursor:pointer;flex-shrink:0;transition:background .22s; }
+.pd-switch.on { background:${T.blue};border-color:${T.blue}; }
+.pd-switch-knob { width:15px;height:15px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform .22s; }
 .pd-switch.on .pd-switch-knob { transform:translateX(17px); }
-.pd-danger-row { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
-.pd-danger-text { font-size:12.5px; color:rgba(244,239,230,.4); line-height:1.6; max-width:420px; }
+.pd-danger-row { display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap; }
+.pd-danger-text { font-size:12.5px;color:rgba(244,239,230,.4);line-height:1.6;max-width:420px; }
 
 /* ════════════ RESPONSIVE ════════════ */
-
-/* ─ Tablet: 960px and below ─ */
 @media(max-width:960px) {
   .pd-layout { grid-template-columns:1fr; }
-  .pd-sidebar { 
-    position:fixed; left:-220px; top:0; width:220px; height:100vh; 
-    transition:left .3s cubic-bezier(.4,0,.2,1); z-index:160;
-    box-shadow:4px 0 16px rgba(0,0,0,.5); overflow-y:auto;
-  }
-  .pd-sidebar.open { left:0; }
-  .pd-main { position:relative; z-index:1; }
+  .pd-sidebar { display:none; }
   .pd-content { padding:1.5rem; }
-  .pd-topbar { padding:0.9rem 1.2rem; gap:0.5rem; }
-  .pd-topbar-title { font-size:18px; }
+  .pd-topbar { padding:1rem 1.5rem; }
   .pd-grid-2 { grid-template-columns:1fr; }
-  .pd-msg-layout { grid-template-columns:1fr; height:auto; }
-  .pd-msg-list { max-height:280px; border-right:none; border-bottom:1px solid ${T.divider}; }
-  .pd-mobile-toggle { display:flex; }
-  .pd-mobile-overlay { z-index:150; }
-  .pd-cc-toolbar { flex-direction:column; gap:1rem; }
-  .pd-cc-search { min-width:100%; }
-  .pd-cc-filters { width:100%; overflow-x:auto; }
+  .pd-grid-3 { grid-template-columns:1fr; }
+  .pd-stats { grid-template-columns:repeat(2,1fr); }
+  .pd-msg-layout { grid-template-columns:1fr;height:auto; }
+  .pd-msg-list { max-height:220px; }
 }
-
-/* ─ Small tablet & large mobile: 768px and below ─ */
-@media(max-width:768px) {
-  .pd-content { padding:1.25rem; }
-  .pd-topbar { padding:0.8rem 1rem; gap:0.4rem; }
-  .pd-topbar-title { font-size:16px; flex:1; margin-right:0.5rem; }
-  .pd-mobile-toggle { font-size:20px; width:40px; height:40px; }
-  .pd-topbar-title em { font-style:italic; }
-  .pd-section { margin-bottom:1rem; }
-  .pd-section-head { padding:1rem 1.25rem; }
-  .pd-section-body { padding:1.25rem; }
-  .pd-cc-card { padding:1.25rem 1.5rem; }
-  .pd-field { margin-bottom:0.9rem; }
-  .pd-grid-2 { gap:0.75rem; }
-  .pd-label { font-size:9px; }
-  .pd-input, .pd-textarea { padding:9px 11px; font-size:13px; }
-  .btn-solid-sm, .btn-ghost-sm, .btn-danger-sm { padding:7px 16px; font-size:10px; }
-  .pd-alert { padding:0.85rem 1.2rem; gap:10px; font-size:12px; }
-  .pd-sub-card { padding:1rem 1.35rem; }
-  .pd-cc-top { gap:0.75rem; }
-  .pd-cc-title { font-size:15px; }
-  .pd-cc-meta { gap:0.85rem; font-size:11px; }
-  .pd-cc-foot { gap:0.75rem; }
-  .pd-cc-badges { gap:0.4rem; }
-  .pd-cc-actions { flex-wrap:wrap; gap:0.4rem; }
-  .pd-modal { max-width:90vw; }
-  .pd-modal-body { padding:1.5rem; font-size:12.5px; }
-  .pd-toast { bottom:1.5rem; right:1.5rem; padding:10px 15px; font-size:11px; }
-}
-
-/* ─ Mobile: 640px and below ─ */
-@media(max-width:640px) {
-  body { font-size:14px; }
-  .pd-content { padding:1rem; }
-  .pd-topbar { padding:0.7rem 0.9rem; gap:0.3rem; }
-  .pd-topbar-title { font-size:15px; margin-right:0.3rem; }
-  .pd-mobile-toggle { font-size:20px; width:40px; height:40px; }
-  .pd-topbar-actions { gap:0.5rem; }
+@media(max-width:500px) {
+  .pd-stats { grid-template-columns:1fr; }
   .pd-topbar-actions .btn-ghost-sm { display:none; }
-  .pd-section-head { padding:0.9rem 1rem; }
-  .pd-section-body { padding:1rem; }
-  .pd-cc-card { padding:1rem 1.25rem; }
-  .pd-field { margin-bottom:0.8rem; }
-  .pd-grid-2 { gap:0.65rem; margin-bottom:0.9rem; }
-  .pd-label { font-size:8.5px; margin-bottom:5px; }
-  .pd-input, .pd-textarea { padding:8px 10px; font-size:12px; min-height:38px; }
-  .pd-textarea { min-height:90px; }
-  .btn-solid-sm, .btn-ghost-sm, .btn-danger-sm { 
-    padding:6px 14px; font-size:9px; min-height:36px; min-width:36px; 
-  }
-  .btn-solid-sm:hover { transform:none; }
-  .pd-chips { gap:0.4rem; }
-  .pd-chip { padding:6px 12px; font-size:11px; }
-  .pd-callform-actions { flex-direction:column-reverse; gap:0.6rem; }
-  .pd-callform-actions button { width:100%; }
-  .pd-alert { padding:0.75rem 1rem; gap:8px; font-size:11.5px; margin-bottom:1.5rem; }
-  .pd-cc-title { font-size:14px; }
-  .pd-cc-role { font-size:11px; }
-  .pd-cc-meta { gap:0.6rem; font-size:10px; flex-wrap:wrap; }
-  .pd-cc-desc { font-size:12px; margin-bottom:0.85rem; }
-  .pd-cc-tags { gap:0.3rem; margin-bottom:0.9rem; }
-  .pd-cc-tag { font-size:9px; padding:2px 8px; }
-  .pd-cc-foot { flex-direction:column; padding-top:0.85rem; border-top:1px solid ${T.divider}; }
-  .pd-cc-subs { order:2; }
-  .pd-cc-actions { order:1; width:100%; }
-  .pd-cc-iconbtn { flex:1; padding:6px 10px; font-size:10px; min-height:36px; }
-  .pd-sub-card { padding:0.9rem 1.1rem; }
-  .pd-sub-head { flex-direction:column; gap:0.5rem; }
-  .pd-modal { max-width:95vw; margin:0 1rem; }
-  .pd-modal-head { padding:1rem 1.25rem; }
-  .pd-modal-title { font-size:15px; }
-  .pd-modal-body { padding:1.25rem; font-size:12px; }
-  .pd-toggle-row { padding:0.7rem 0; }
-  .pd-toggle-label { font-size:12px; }
-  .pd-toggle-desc { font-size:10px; }
-  .pd-danger-text { font-size:11.5px; }
-  .pd-toast { bottom:1rem; right:1rem; padding:9px 13px; font-size:10.5px; gap:6px; }
-  .pd-thread-input { padding:0.85rem 1rem; gap:0.5rem; }
-  .pd-thread-input input { padding:8px 11px; font-size:12px; }
-  .pd-bubble { max-width:80%; padding:8px 12px; font-size:12px; }
-  .pd-msg-name { font-size:12px; }
-  .pd-msg-role { font-size:10px; }
-  .pd-msg-preview { font-size:10.5px; }
-}
-
-/* ─ Small mobile: 480px and below ─ */
-@media(max-width:480px) {
-  .pd-content { padding:0.85rem; }
-  .pd-topbar { padding:0.65rem 0.75rem; gap:0.25rem; }
-  .pd-topbar-title { font-size:13px; margin-right:0.25rem; }
-  .pd-mobile-toggle { font-size:18px; width:38px; height:38px; }
-  .pd-topbar-actions { gap:0.3rem; }
-  .pd-section { margin-bottom:0.85rem; }
-  .pd-section-head { padding:0.8rem 0.9rem; }
-  .pd-section-left { gap:8px; }
-  .pd-section-icon-box { width:32px; height:32px; font-size:13px; }
-  .pd-section-title { font-size:14px; margin-bottom:1px; }
-  .pd-section-sub { font-size:10px; }
-  .pd-section-body { padding:0.9rem; }
-  .pd-section-right { gap:6px; }
-  .pd-cc-card { padding:0.9rem 1.1rem; }
-  .pd-field { margin-bottom:0.7rem; }
-  .pd-grid-2 { gap:0.5rem; margin-bottom:0.8rem; }
-  .pd-label { font-size:8px; margin-bottom:4px; letter-spacing:1.5px; }
-  .pd-input, .pd-textarea { padding:7px 9px; font-size:11.5px; }
-  .pd-textarea { min-height:80px; }
-  .btn-solid-sm, .btn-ghost-sm, .btn-danger-sm { 
-    padding:5px 12px; font-size:8.5px; min-height:34px; letter-spacing:1px;
-  }
-  .pd-chips { gap:0.3rem; }
-  .pd-chip { padding:5px 10px; font-size:10px; }
-  .pd-cc-top { flex-direction:column; gap:0.5rem; margin-bottom:0.6rem; }
-  .pd-cc-badges { width:100%; }
-  .pd-cc-type, .pd-cc-statusbadge { font-size:9px; padding:3px 8px; }
-  .pd-cc-meta { gap:0.5rem; font-size:9px; }
-  .pd-cc-desc { font-size:11.5px; margin-bottom:0.7rem; line-height:1.5; }
-  .pd-cc-tags { gap:0.25rem; margin-bottom:0.8rem; }
-  .pd-cc-tag { font-size:8px; padding:2px 7px; }
-  .pd-cc-iconbtn { font-size:9px; padding:5px 9px; min-height:34px; }
-  .pd-alert { padding:0.7rem 0.9rem; gap:7px; font-size:11px; margin-bottom:1.25rem; }
-  .pd-msg-list { max-height:240px; }
-  .pd-msg-item { padding:0.8rem 1rem; gap:0.6rem; }
-  .pd-msg-avatar { width:34px; height:34px; font-size:14px; }
-  .pd-msg-name { font-size:11px; }
-  .pd-msg-role { font-size:9px; }
-  .pd-msg-preview { font-size:10px; }
-  .pd-thread-head { padding:0.9rem 1rem; gap:0.6rem; }
-  .pd-bubble { max-width:85%; padding:7px 11px; font-size:11px; }
-  .pd-bubble-time { font-size:9px; }
-  .pd-thread-input { padding:0.75rem 0.85rem; gap:0.4rem; }
-  .pd-thread-input input { padding:7px 9px; font-size:11.5px; }
-  .pd-modal { max-width:98vw; margin:0 0.5rem; }
-  .pd-modal-head { padding:0.9rem 1.1rem; }
-  .pd-modal-title { font-size:13px; }
-  .pd-modal-close { font-size:16px; }
-  .pd-modal-body { padding:1rem 1.1rem; font-size:11px; line-height:1.5; }
-  .pd-modal-actions { gap:0.6rem; margin-top:1.2rem; }
-  .pd-sub-card { padding:0.8rem 1rem; }
-  .pd-sub-title { font-size:13px; }
-  .pd-sub-count { font-size:10px; }
-  .pd-sub-empty { font-size:11.5px; line-height:1.5; }
-  .pd-toggle-row { padding:0.6rem 0; }
-  .pd-toggle-label { font-size:11px; margin-bottom:2px; }
-  .pd-toggle-desc { font-size:9.5px; }
-  .pd-switch { width:36px; height:20px; }
-  .pd-switch-knob { width:14px; height:14px; }
-  .pd-switch.on .pd-switch-knob { transform:translateX(16px); }
-  .pd-danger-text { font-size:11px; max-width:100%; line-height:1.5; }
-  .pd-toast { bottom:0.85rem; right:0.85rem; padding:8px 11px; font-size:10px; gap:5px; }
-}
-
-/* ─ Extra small mobile: 360px and below ─ */
-@media(max-width:360px) {
-  .pd-content { padding:0.75rem; }
-  .pd-topbar { padding:0.6rem 0.75rem; }
-  .pd-topbar-title { font-size:12px; }
-  .pd-section-head { padding:0.7rem 0.8rem; }
-  .pd-section-body { padding:0.8rem; }
-  .pd-cc-card { padding:0.8rem 1rem; }
-  .pd-field { margin-bottom:0.65rem; }
-  .pd-input, .pd-textarea { font-size:11px; }
-  .pd-textarea { min-height:75px; }
-  .btn-solid-sm, .btn-ghost-sm, .btn-danger-sm { 
-    padding:4px 10px; font-size:8px; min-height:32px;
-  }
-  .pd-chip { padding:4px 9px; font-size:9px; }
-  .pd-cc-top { gap:0.4rem; }
-  .pd-alert { font-size:10px; }
-  .pd-modal { max-width:100vw; border-radius:8px 8px 0 0; margin:0; }
-  .pd-modal-bg { padding:1rem; }
-  .pd-toast { bottom:0.75rem; right:0.75rem; padding:7px 10px; font-size:9px; }
 }
 `;
 
-/* ── constants ── */
-const PROJECT_TYPES = ["AD", "Short Film", "Feature Film", "Music Video", "YouTube/Social Media Content"];
-const AGE_GROUPS    = ["Child Artist", "18-25", "25-35", "35-45", "45-60", "60+"];
-const GENDERS       = ["Male", "Female", "Any"];
-const ROLE_TYPES    = ["Lead", "Supporting", "Extras", "Crowd"];
-
-const EMPTY_CALL = {
-  title: "", projectType: "", ageGroups: [], gender: "", contactNumber: "",
-  description: "", roleType: "", location: "", numberNeeded: "", deadline: "",
-};
-
-/* ── mock inbox (frontend-only placeholder data, actor → producer) ── */
-const INITIAL_CONVERSATIONS = [
-  {
-    id: "m1", name: "Aarav Sharma", role: "Actor · applied to Lead Actress role", avatar: "🎭", unread: true,
-    messages: [
-      { from: "them", text: "Hi! I just submitted my profile for the lead role — really excited about the project.", time: "9:40 AM" },
-      { from: "me",   text: "Thanks for applying! We'll review and get back to you this week.", time: "9:52 AM" },
-    ],
-  },
-  {
-    id: "m2", name: "Nisha Karki", role: "Actor · Short Film inquiry", avatar: "🎬", unread: false,
-    messages: [
-      { from: "them", text: "Could you share the shoot dates before I confirm my availability?", time: "Yesterday" },
-    ],
-  },
-];
-
-/* ── chip selector (single or multi) ── */
-function ChipGroup({ options, value, onChange, multi = false }) {
-  const isActive = (opt) => (multi ? value.includes(opt) : value === opt);
-  const toggle = (opt) => {
-    if (multi) {
-      onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
-    } else {
-      onChange(opt);
-    }
-  };
-  return (
-    <div className="pd-chips">
-      {options.map((opt) => (
-        <button
-          type="button"
-          key={opt}
-          className={`pd-chip${isActive(opt) ? " on" : ""}`}
-          onClick={() => toggle(opt)}
-        >
-          {opt}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/* ── collapsible section ── */
+/* ── section accordion ── */
 function Section({ icon, title, sub, defaultOpen = false, status = "empty", children }) {
   const [open, setOpen] = useState(defaultOpen);
   const statusMap = {
-    done:    { dot: "done",    label: "Complete" },
-    partial: { dot: "partial", label: "In progress" },
-    empty:   { dot: "empty",   label: "Not started" },
+    done:    { dot:"done",    label:"Complete" },
+    partial: { dot:"partial", label:"In progress" },
+    empty:   { dot:"empty",   label:"Not started" },
   };
   const s = statusMap[status];
   return (
@@ -633,7 +432,6 @@ function Section({ icon, title, sub, defaultOpen = false, status = "empty", chil
   );
 }
 
-/* ── toggle switch ── */
 function Switch({ on, onToggle }) {
   return (
     <div className={`pd-switch${on ? " on" : ""}`} onClick={onToggle}>
@@ -642,274 +440,243 @@ function Switch({ on, onToggle }) {
   );
 }
 
-/* ── casting call create/edit form ── */
-function CallForm({ initial, isEditing, onCancel, onSave }) {
-  const [f, setF] = useState(initial);
-  const [errs, setErrs] = useState({});
-  const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
+const EMPTY_CALL = {
+  title: "", type: "Film", location: "", ageRange: "", gender: "Any",
+  deadline: "", tags: "", description: "",
+};
 
-  const validate = () => {
-    const e = {};
-    if (!f.title.trim())                e.title         = "Project / role title is required";
-    if (!f.projectType)                 e.projectType   = "Select what you're working on";
-    if (!f.ageGroups.length)            e.ageGroups     = "Select at least one age group";
-    if (!f.gender)                      e.gender        = "Select a gender preference";
-    if (!f.roleType)                    e.roleType      = "Select a role type";
-    if (!/^\d{10}$/.test(f.contactNumber)) e.contactNumber = "Enter a 10-digit contact number";
-    if (!f.description.trim() || f.description.trim().length < 15)
-      e.description = "Add a bit more detail (min 15 characters)";
-    return e;
-  };
+/* mock applicants — frontend-only placeholder data, keyed by call id */
+const MOCK_APPLICANTS = [
+  { id:"a1", name:"Sujata Karki", age:24, city:"Kathmandu", avatar:"🎭", note:"5 years theatre experience, fluent in Nepali and English.", status:"new" },
+  { id:"a2", name:"Bikash Thapa", age:29, city:"Pokhara", avatar:"🎬", note:"Lead role in two independent features, trained in stage combat.", status:"shortlist" },
+  { id:"a3", name:"Anjali Rana", age:22, city:"Kathmandu", avatar:"🎭", note:"Fresh graduate from a film academy, strong dance background.", status:"new" },
+  { id:"a4", name:"Rohit Shrestha", age:31, city:"Lalitpur", avatar:"🎬", note:"Worked on 3 TVCs this year, comfortable with comedic timing.", status:"accepted" },
+  { id:"a5", name:"Priya Maharjan", age:26, city:"Bhaktapur", avatar:"🎭", note:"Bilingual voice-over artist branching into on-screen work.", status:"declined" },
+];
 
-  const submit = () => {
-    const e = validate();
-    if (Object.keys(e).length) { setErrs(e); return; }
-    setErrs({});
-    onSave({
-      ...f,
-      title: f.title.trim(),
-      location: f.location.trim(),
-      contactNumber: f.contactNumber.trim(),
-      description: f.description.trim(),
-    });
-  };
+const INITIAL_CONVERSATIONS = [
+  {
+    id:"m1", name:"Sujata Karki", role:"Applicant · Lead Female Role", avatar:"🎭", unread:true,
+    messages:[
+      { from:"them", text:"Hi! Thank you for considering my application — happy to send additional reels if useful.", time:"9:40 AM" },
+      { from:"me",   text:"Thanks for reaching out — could you send your showreel from the last production?", time:"9:52 AM" },
+    ],
+  },
+  {
+    id:"m2", name:"Bikash Thapa", role:"Applicant · Supporting Role", avatar:"🎬", unread:false,
+    messages:[
+      { from:"them", text:"Looking forward to the callback next week.", time:"Yesterday" },
+    ],
+  },
+];
 
-  return (
-    <div className="pd-callform">
-      <div className="pd-field">
-        <label className="pd-label">Project / Role Title</label>
-        <input className="pd-input" value={f.title} onChange={(e) => set("title")(e.target.value)}
-          placeholder="e.g. Lead Actress — Short Film &quot;Monsoon&quot;" />
-        {errs.title && <div className="pd-error">{errs.title}</div>}
-      </div>
-
-      <div className="pd-field">
-        <label className="pd-label">What are you working on?</label>
-        <ChipGroup options={PROJECT_TYPES} value={f.projectType} onChange={set("projectType")} />
-        {errs.projectType && <div className="pd-error">{errs.projectType}</div>}
-      </div>
-
-      <div className="pd-field">
-        <label className="pd-label">Age Group of Artist Wanted</label>
-        <ChipGroup options={AGE_GROUPS} value={f.ageGroups} onChange={set("ageGroups")} multi />
-        {errs.ageGroups && <div className="pd-error">{errs.ageGroups}</div>}
-      </div>
-
-      <div className="pd-grid-2">
-        <div className="pd-field">
-          <label className="pd-label">Gender</label>
-          <ChipGroup options={GENDERS} value={f.gender} onChange={set("gender")} />
-          {errs.gender && <div className="pd-error">{errs.gender}</div>}
-        </div>
-        <div className="pd-field">
-          <label className="pd-label">Role of Artist</label>
-          <ChipGroup options={ROLE_TYPES} value={f.roleType} onChange={set("roleType")} />
-          {errs.roleType && <div className="pd-error">{errs.roleType}</div>}
-        </div>
-      </div>
-
-      <div className="pd-grid-2">
-        <div className="pd-field">
-          <label className="pd-label">Contact Number</label>
-          <input className="pd-input" type="tel" value={f.contactNumber}
-            onChange={(e) => set("contactNumber")(e.target.value)} placeholder="98XXXXXXXX" />
-          {errs.contactNumber && <div className="pd-error">{errs.contactNumber}</div>}
-        </div>
-        <div className="pd-field">
-          <label className="pd-label">Location <span className="pd-optional">(optional)</span></label>
-          <input className="pd-input" value={f.location} onChange={(e) => set("location")(e.target.value)}
-            placeholder="Kathmandu" />
-        </div>
-      </div>
-
-      <div className="pd-grid-2">
-        <div className="pd-field">
-          <label className="pd-label">Artists Needed <span className="pd-optional">(optional)</span></label>
-          <input className="pd-input" type="number" min="1" value={f.numberNeeded}
-            onChange={(e) => set("numberNeeded")(e.target.value)} placeholder="1" />
-        </div>
-        <div className="pd-field">
-          <label className="pd-label">Application Deadline <span className="pd-optional">(optional)</span></label>
-          <input className="pd-input" type="date" value={f.deadline}
-            onChange={(e) => set("deadline")(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="pd-field">
-        <label className="pd-label">Further Details</label>
-        <textarea className="pd-textarea" value={f.description}
-          onChange={(e) => set("description")(e.target.value)}
-          placeholder="Describe the character, tone of the project, shoot dates, compensation, requirements..." />
-        {errs.description && <div className="pd-error">{errs.description}</div>}
-      </div>
-
-      <div className="pd-callform-actions">
-        <button className="btn-ghost-sm" onClick={onCancel}>Cancel</button>
-        <button className="btn-solid-sm" onClick={submit}>
-          {isEditing ? "Save Changes" : "Post Casting Call"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── casting call card ── */
-function CallCard({ call, onEdit, onDelete, onToggleStatus }) {
-  return (
-    <div className={`pd-cc-card${call.status === "closed" ? " closed" : ""}`}>
-      <div className="pd-cc-top">
-        <div className="pd-cc-title-wrap">
-          <div className="pd-cc-title">{call.title}</div>
-          <div className="pd-cc-role">{call.roleType} role</div>
-        </div>
-        <div className="pd-cc-badges">
-          <span className="pd-cc-type">{call.projectType}</span>
-          <span className={`pd-cc-statusbadge ${call.status}`}>{call.status === "open" ? "Open" : "Closed"}</span>
-        </div>
-      </div>
-
-      <div className="pd-cc-meta">
-        {call.location && <span>📍 {call.location}</span>}
-        <span>📞 {call.contactNumber}</span>
-        {call.numberNeeded && <span>👥 {call.numberNeeded} needed</span>}
-        {call.deadline && <span>🗓 Apply by <strong>{call.deadline}</strong></span>}
-      </div>
-
-      <div className="pd-cc-desc">{call.description}</div>
-
-      <div className="pd-cc-tags">
-        {call.ageGroups.map((g) => <span className="pd-cc-tag" key={g}>{g}</span>)}
-        <span className="pd-cc-tag">{call.gender}</span>
-      </div>
-
-      <div className="pd-cc-foot">
-        <div className="pd-cc-subs">
-          <strong>{call.submissions || 0}</strong> submission{call.submissions === 1 ? "" : "s"}
-        </div>
-        <div className="pd-cc-actions">
-          <button className="pd-cc-iconbtn" onClick={() => onToggleStatus(call.id)}>
-            {call.status === "open" ? "Close call" : "Reopen"}
-          </button>
-          <button className="pd-cc-iconbtn" onClick={() => onEdit(call.id)}>Edit</button>
-          <button className="pd-cc-iconbtn danger" onClick={() => onDelete(call.id)}>Delete</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── main component ── */
 export default function ProducerDashboard() {
   const session = getSession();
-  const uid = session?.user?.id ?? "guest";
-  const profileKey = `ch_producer_profile:${uid}`;
-  const callsKey   = `ch_producer_calls:${uid}`;
-  const notifKey   = `ch_producer_notifications:${uid}`;
+  const profileKey = `ch_producer_profile:${session?.user?.id ?? "guest"}`;
+  const callsKey = `ch_producer_calls:${session?.user?.id ?? "guest"}`;
+  const applicantsKey = `ch_producer_applicants:${session?.user?.id ?? "guest"}`;
+  const notifKey = `ch_producer_notifications:${session?.user?.id ?? "guest"}`;
 
-  const [profile, setProfile] = useState(() => {
+  const [info, setInfo] = useState(() => {
     const saved = JSON.parse(localStorage.getItem(profileKey) || "null");
-    return saved || {
-      companyName: session?.user?.company || "",
+    return saved?.info || {
+      company: session?.user?.company || "",
       contactName: session?.user?.name || "",
-      email: session?.user?.email || "",
       phone: session?.user?.phone || "",
-      website: "",
-      about: "",
+      website: "", industry: "Film Production",
+      city: "", about: "",
     };
   });
-
-  const [calls, setCalls] = useState(() => JSON.parse(localStorage.getItem(callsKey) || "[]"));
+  const [logo, setLogo] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(profileKey) || "null");
+    return saved?.logo || null;
+  });
 
   const [activeNav, setActiveNav] = useState("profile");
   const [toast, setToast] = useState(null);
-  const [formMode, setFormMode] = useState(null); // null | "new" | <callId>
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [ccSearch, setCcSearch] = useState("");
-  const [ccFilter, setCcFilter] = useState("All");
+  // ── casting calls (producer's own postings) ──
+  // localStorage seeds instant UI on load; the database (via
+  // /api/producer/casting-calls) is the real source of truth once
+  // the initial fetch below completes.
+  const [calls, setCalls] = useState(() => {
+    return JSON.parse(localStorage.getItem(callsKey) || "[]");
+  });
+  const [callsLoading, setCallsLoading] = useState(true);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [editingCallId, setEditingCallId] = useState(null);
+  const [callForm, setCallForm] = useState(EMPTY_CALL);
+  const [callErr, setCallErr] = useState("");
+  const [callSubmitting, setCallSubmitting] = useState(false);
 
+  // ── applicants ──
+  const [applicants, setApplicants] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem(applicantsKey) || "null");
+    return saved || MOCK_APPLICANTS;
+  });
+  const [appFilter, setAppFilter] = useState("All");
+
+  // ── messages ──
   const [conversations, setConversations] = useState(INITIAL_CONVERSATIONS);
   const [activeConvo, setActiveConvo] = useState(null);
   const [draft, setDraft] = useState("");
 
-  const [pwForm, setPwForm] = useState({ current: "", next: "", confirm: "" });
+  // ── settings ──
+  const [pwForm, setPwForm] = useState({ current:"", next:"", confirm:"" });
   const [pwErr, setPwErr] = useState("");
   const [notifs, setNotifs] = useState(() => {
     return JSON.parse(localStorage.getItem(notifKey) || "null") || {
-      newApplicants: true, messages: true, email: true,
+      email:true, newApplicants:true, messages:true,
     };
   });
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const [deleteCallId, setDeleteCallId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => { localStorage.setItem(notifKey, JSON.stringify(notifs)); }, [notifs, notifKey]);
   useEffect(() => { localStorage.setItem(callsKey, JSON.stringify(calls)); }, [calls, callsKey]);
+  useEffect(() => { localStorage.setItem(applicantsKey, JSON.stringify(applicants)); }, [applicants, applicantsKey]);
+
+  // Load this producer's real casting calls from the database on mount.
+  useEffect(() => {
+    let cancelled = false;
+    listMyCastingCalls()
+      .then(({ calls: serverCalls }) => {
+        if (!cancelled) setCalls(serverCalls);
+      })
+      .catch((err) => {
+        console.warn("Could not load casting calls from server, using local cache:", err.message);
+      })
+      .finally(() => { if (!cancelled) setCallsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const setI = (k) => (v) => setInfo((p) => ({ ...p, [k]: v }));
+
+  const allFields = [info.company, info.contactName, info.phone, info.website, info.city, info.about, logo];
+  const pct = Math.round(allFields.filter(Boolean).length / allFields.length * 100);
+
+  const status = (keys) => {
+    const vals = keys.map((k) => (k === "logo" ? logo : info[k]));
+    if (vals.every(Boolean)) return "done";
+    if (vals.some(Boolean)) return "partial";
+    return "empty";
+  };
 
   const showToast = (msg, isErr = false) => {
     setToast({ msg, isErr });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const setP = (k) => (v) => setProfile((p) => ({ ...p, [k]: v }));
-  const saveProfile = () => {
-    localStorage.setItem(profileKey, JSON.stringify(profile));
+  const handleSaveProfile = () => {
+    localStorage.setItem(profileKey, JSON.stringify({ info, logo }));
     showToast("✓ Company profile saved");
   };
 
-  const handleSignOut = () => { clearSession(); window.location.href = "/"; };
-
-  const addCall = (data) => {
-    const newCall = { ...data, id: `call_${Date.now()}`, status: "open", createdAt: new Date().toISOString(), submissions: 0 };
-    setCalls((prev) => [newCall, ...prev]);
-    setFormMode(null);
-    showToast("✓ Casting call posted");
+  const handleLogo = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogo(URL.createObjectURL(file));
   };
 
-  const saveEditedCall = (id, data) => {
-    setCalls((prev) => prev.map((c) => (c.id === id ? { ...c, ...data } : c)));
-    setFormMode(null);
-    showToast("✓ Casting call updated");
+  const handleSignOut = () => {
+    clearSession();
+    window.location.href = "/";
   };
 
-  const toggleCallStatus = (id) => {
-    setCalls((prev) => prev.map((c) => (c.id === id ? { ...c, status: c.status === "open" ? "closed" : "open" } : c)));
+  const openNewCallModal = () => {
+    setEditingCallId(null);
+    setCallForm(EMPTY_CALL);
+    setCallErr("");
+    setShowCallModal(true);
   };
 
-  const removeCall = () => {
-    setCalls((prev) => prev.filter((c) => c.id !== deleteCallId));
-    setDeleteCallId(null);
-    showToast("Casting call deleted");
-  };
-
-  const filteredCalls = useMemo(() => {
-    return calls.filter((c) => {
-      const matchesType = ccFilter === "All" || c.projectType === ccFilter;
-      const q = ccSearch.trim().toLowerCase();
-      const matchesSearch = !q ||
-        c.title.toLowerCase().includes(q) ||
-        (c.location || "").toLowerCase().includes(q);
-      return matchesType && matchesSearch;
+  const openEditCallModal = (call) => {
+    setEditingCallId(call.id);
+    setCallForm({
+      title: call.title, type: call.type, location: call.location,
+      ageRange: call.ageRange, gender: call.gender, deadline: call.deadline,
+      tags: call.tags.join(", "), description: call.description,
     });
-  }, [calls, ccSearch, ccFilter]);
+    setCallErr("");
+    setShowCallModal(true);
+  };
 
+  const submitCall = async () => {
+    if (!callForm.title.trim())    return setCallErr("Title is required");
+    if (!callForm.location.trim()) return setCallErr("Location is required");
+    if (!callForm.deadline)        return setCallErr("Application deadline is required");
+    if (!callForm.description.trim()) return setCallErr("Description is required");
+    setCallErr("");
+    setCallSubmitting(true);
+
+    try {
+      if (editingCallId) {
+        const { call } = await updateCastingCall(editingCallId, callForm);
+        setCalls((prev) => prev.map((c) => (c.id === editingCallId ? call : c)));
+        showToast("✓ Casting call updated");
+      } else {
+        // Saving this also emails the admin the full brief server-side
+        // (server/lib/mailer.js) so it can be manually reviewed and
+        // matched with actors — see emailSent in the response.
+        const { call, emailSent } = await createCastingCall(callForm);
+        setCalls((prev) => [call, ...prev]);
+        showToast(
+          emailSent
+            ? "✓ Casting call posted — our team has been notified"
+            : "✓ Casting call posted"
+        );
+      }
+      setShowCallModal(false);
+    } catch (err) {
+      setCallErr(err.message || "Something went wrong — please try again");
+    } finally {
+      setCallSubmitting(false);
+    }
+  };
+
+  const toggleCallStatus = async (id) => {
+    try {
+      const { call } = await toggleCastingCallStatus(id);
+      setCalls((prev) => prev.map((c) => (c.id === id ? call : c)));
+    } catch (err) {
+      showToast(err.message || "Couldn't update status", true);
+    }
+  };
+
+  const deleteCall = async (id) => {
+    try {
+      await deleteCastingCall(id);
+      setCalls((prev) => prev.filter((c) => c.id !== id));
+      showToast("Casting call deleted");
+    } catch (err) {
+      showToast(err.message || "Couldn't delete casting call", true);
+    }
+  };
+
+  const filteredApplicants = useMemo(() => {
+    if (appFilter === "All") return applicants;
+    return applicants.filter((a) => a.status === appFilter.toLowerCase());
+  }, [applicants, appFilter]);
+
+  const setApplicantStatus = (id, status) => {
+    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+  };
+
+  const newApplicantsCount = applicants.filter((a) => a.status === "new").length;
   const openCallsCount = calls.filter((c) => c.status === "open").length;
-  const totalSubmissions = calls.reduce((sum, c) => sum + (c.submissions || 0), 0);
 
   const sendMessage = () => {
     if (!draft.trim() || !activeConvo) return;
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConvo
-          ? { ...c, unread: false, messages: [...c.messages, { from: "me", text: draft.trim(), time: "Now" }] }
-          : c
-      )
-    );
+    setConversations((prev) => prev.map((c) =>
+      c.id === activeConvo
+        ? { ...c, unread:false, messages:[...c.messages, { from:"me", text:draft.trim(), time:"Now" }] }
+        : c
+    ));
     setDraft("");
   };
 
   const openConvo = (id) => {
     setActiveConvo(id);
-    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread: false } : c)));
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread:false } : c)));
   };
 
   const submitPasswordChange = () => {
@@ -917,75 +684,65 @@ export default function ProducerDashboard() {
     if (pwForm.next.length < 6) return setPwErr("New password must be at least 6 characters");
     if (pwForm.next !== pwForm.confirm) return setPwErr("New passwords don't match");
     setPwErr("");
-    // Frontend-only for now — no backend endpoint to change password yet.
-    setPwForm({ current: "", next: "", confirm: "" });
+    setPwForm({ current:"", next:"", confirm:"" });
     showToast("✓ Password updated");
   };
 
-  const confirmDeleteAccount = () => {
-    setShowDeleteAccount(false);
+  const confirmDelete = () => {
+    setShowDeleteConfirm(false);
     localStorage.removeItem(profileKey);
     localStorage.removeItem(callsKey);
+    localStorage.removeItem(applicantsKey);
     localStorage.removeItem(notifKey);
     clearSession();
     window.location.href = "/";
   };
 
   const NAV = [
-    { id: "profile",     icon: "🏢", label: "Company Profile" },
-    { id: "calls",       icon: "🎬", label: "Casting Calls", badge: openCallsCount ? String(openCallsCount) : null },
-    { id: "submissions", icon: "📥", label: "Submissions", badge: totalSubmissions ? String(totalSubmissions) : null },
-    { id: "messages",    icon: "✉️", label: "Messages", badge: conversations.some((c) => c.unread) ? String(conversations.filter((c) => c.unread).length) : null },
-    { id: "settings",    icon: "⚙️", label: "Settings" },
+    { id:"profile",     icon:"🏢", label:"Company Profile" },
+    { id:"calls",       icon:"🎬", label:"My Casting Calls", badge: openCallsCount > 0 ? String(openCallsCount) : null },
+    { id:"applicants",  icon:"🎭", label:"Applicants", badge: newApplicantsCount > 0 ? String(newApplicantsCount) : null },
+    { id:"messages",    icon:"✉️", label:"Messages", badge: conversations.some((c) => c.unread) ? String(conversations.filter((c) => c.unread).length) : null },
+    { id:"settings",    icon:"⚙️", label:"Settings" },
   ];
 
   const TITLES = {
     profile: <>Company <em>Profile</em></>,
-    calls: <>Casting <em>Calls</em></>,
-    submissions: <em>Submissions</em>,
+    calls: <>My Casting <em>Calls</em></>,
+    applicants: <>Review <em>Applicants</em></>,
     messages: <>My <em>Messages</em></>,
     settings: <>Account <em>Settings</em></>,
   };
 
-  const editingCall = formMode && formMode !== "new" ? calls.find((c) => c.id === formMode) : null;
   const activeConvoObj = conversations.find((c) => c.id === activeConvo);
 
   return (
     <>
       <style>{CSS}</style>
 
-      {/* ── MOBILE OVERLAY ── */}
-      {sidebarOpen && (
-        <div 
-          className="pd-mobile-overlay open"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       <div className="pd-layout">
 
         {/* ── SIDEBAR ── */}
-        <aside className={`pd-sidebar${sidebarOpen ? " open" : ""}`}>
+        <aside className="pd-sidebar">
           <div className="pd-logo">
             <div className="pd-logo-mark"><span>C</span></div>
             <span className="pd-logo-name">Casting<em>.Home</em></span>
           </div>
 
-          <div className="pd-prod-card">
-            <div className="pd-avatar">🎬</div>
-            <div className="pd-prod-name">{profile.companyName || session?.user?.name || "Your Company"}</div>
-            <div className="pd-prod-role">Producer</div>
+          <div className="pd-company-card">
+            <div className="pd-avatar">
+              {logo ? <img src={logo} alt="Logo" /> : "🏢"}
+            </div>
+            <div className="pd-company-name">{info.company || "Your Company"}</div>
+            <div className="pd-company-role">Producer</div>
           </div>
 
-          <div className="pd-stats">
-            <div className="pd-stat">
-              <div className="pd-stat-num">{openCallsCount}</div>
-              <div className="pd-stat-lbl">Open Calls</div>
+          <div className="pd-completion">
+            <div className="pd-completion-row">
+              <span className="pd-completion-label">Profile</span>
+              <span className="pd-completion-pct">{pct}%</span>
             </div>
-            <div className="pd-stat">
-              <div className="pd-stat-num">{totalSubmissions}</div>
-              <div className="pd-stat-lbl">Submissions</div>
-            </div>
+            <div className="pd-bar-bg"><div className="pd-bar-fill" style={{ width:`${pct}%` }} /></div>
           </div>
 
           <nav className="pd-nav">
@@ -994,7 +751,7 @@ export default function ProducerDashboard() {
               <div
                 key={item.id}
                 className={`pd-nav-item${activeNav === item.id ? " on" : ""}`}
-                onClick={() => { setActiveNav(item.id); setFormMode(null); setSidebarOpen(false); }}
+                onClick={() => setActiveNav(item.id)}
               >
                 <span className="pd-nav-icon">{item.icon}</span>
                 {item.label}
@@ -1012,141 +769,228 @@ export default function ProducerDashboard() {
         <div className="pd-main">
 
           <div className="pd-topbar">
-            <button className="pd-mobile-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
             <div className="pd-topbar-title">{TITLES[activeNav]}</div>
             <div className="pd-topbar-actions">
               {activeNav === "profile" && (
-                <button className="btn-solid-sm" onClick={saveProfile}>Save changes</button>
+                <button className="btn-solid-sm" onClick={handleSaveProfile}>Save changes</button>
               )}
-              {activeNav === "calls" && !formMode && (
-                <button className="btn-solid-sm" onClick={() => setFormMode("new")}>+ Post Casting Call</button>
+              {activeNav === "calls" && (
+                <button className="btn-solid-sm" onClick={openNewCallModal}>+ Post a casting call</button>
               )}
             </div>
           </div>
 
           <div className="pd-content">
 
-            {/* ══════════ PROFILE ══════════ */}
+            {/* ══════════ COMPANY PROFILE ══════════ */}
             {activeNav === "profile" && (
-              <Section icon="🏢" title="Company Information" sub="Shown to actors on your casting calls" defaultOpen status="partial">
-                <div className="pd-grid-2">
-                  <div className="pd-field">
-                    <label className="pd-label">Company / Production House</label>
-                    <input className="pd-input" value={profile.companyName} onChange={(e) => setP("companyName")(e.target.value)} placeholder="Home Production Pvt. Ltd." />
+              <>
+                {pct < 100 && (
+                  <div className="pd-alert">
+                    <span className="pd-alert-icon">—</span>
+                    <span>Your company profile is <strong>{pct}% complete.</strong> A complete profile builds trust with actors reviewing your casting calls.</span>
                   </div>
-                  <div className="pd-field">
-                    <label className="pd-label">Contact Person</label>
-                    <input className="pd-input" value={profile.contactName} onChange={(e) => setP("contactName")(e.target.value)} placeholder="Your name" />
+                )}
+
+                <Section icon="🏢" title="Company Details" sub="Name, contact, website" defaultOpen
+                  status={status(["company","contactName","phone","website"])}>
+                  <div className="pd-grid-2">
+                    <div className="pd-field">
+                      <label className="pd-label">Company Name</label>
+                      <input className="pd-input" value={info.company}
+                        onChange={(e) => setI("company")(e.target.value)} placeholder="XYZ Films" />
+                    </div>
+                    <div className="pd-field">
+                      <label className="pd-label">Contact Person</label>
+                      <input className="pd-input" value={info.contactName}
+                        onChange={(e) => setI("contactName")(e.target.value)} placeholder="Ramesh Thapa" />
+                    </div>
                   </div>
-                </div>
-                <div className="pd-grid-2">
-                  <div className="pd-field">
-                    <label className="pd-label">Email</label>
-                    <input className="pd-input" value={profile.email} disabled />
+                  <div className="pd-grid-2">
+                    <div className="pd-field">
+                      <label className="pd-label">Phone</label>
+                      <input className="pd-input" type="tel" value={info.phone}
+                        onChange={(e) => setI("phone")(e.target.value)} placeholder="98XXXXXXXX" />
+                    </div>
+                    <div className="pd-field">
+                      <label className="pd-label">Website</label>
+                      <input className="pd-input" value={info.website}
+                        onChange={(e) => setI("website")(e.target.value)} placeholder="https://yourcompany.com" />
+                    </div>
                   </div>
-                  <div className="pd-field">
-                    <label className="pd-label">Phone</label>
-                    <input className="pd-input" type="tel" value={profile.phone} onChange={(e) => setP("phone")(e.target.value)} placeholder="98XXXXXXXX" />
+                  <div className="pd-grid-2">
+                    <div className="pd-field">
+                      <label className="pd-label">Industry</label>
+                      <select className="pd-select" value={info.industry}
+                        onChange={(e) => setI("industry")(e.target.value)}>
+                        <option>Film Production</option>
+                        <option>TV Production</option>
+                        <option>Ad Agency</option>
+                        <option>Theatre</option>
+                        <option>Web Series / OTT</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                    <div className="pd-field">
+                      <label className="pd-label">City</label>
+                      <input className="pd-input" value={info.city}
+                        onChange={(e) => setI("city")(e.target.value)} placeholder="Kathmandu" />
+                    </div>
                   </div>
-                </div>
-                <div className="pd-field">
-                  <label className="pd-label">Website / Portfolio <span className="pd-optional">(optional)</span></label>
-                  <input className="pd-input" value={profile.website} onChange={(e) => setP("website")(e.target.value)} placeholder="https://" />
-                </div>
-                <div className="pd-field">
-                  <label className="pd-label">About</label>
-                  <textarea className="pd-textarea" value={profile.about} onChange={(e) => setP("about")(e.target.value)}
-                    placeholder="Tell actors a bit about your production house and the kind of work you make." />
-                </div>
-              </Section>
+                </Section>
+
+                <Section icon="🖼️" title="Company Logo" sub="Shown on your casting calls" status={logo ? "done" : "empty"}>
+                  <div className={`pd-logo-slot${logo ? " filled" : ""}`}>
+                    <input type="file" accept="image/*" onChange={handleLogo} />
+                    {logo ? (
+                      <>
+                        <img src={logo} alt="Logo" className="pd-logo-preview" />
+                        <div className="pd-logo-overlay"><span className="pd-logo-change">Change</span></div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="pd-logo-plus">+</div>
+                        <div className="pd-logo-lbl">Upload logo</div>
+                      </>
+                    )}
+                  </div>
+                  <p className="pd-hint">Square image works best. JPEG or PNG, max 5 MB.</p>
+                </Section>
+
+                <Section icon="📝" title="About the Company" sub="What actors should know before applying" status={status(["about"])}>
+                  <div className="pd-field">
+                    <label className="pd-label">Company bio</label>
+                    <textarea className="pd-textarea" rows={5} value={info.about}
+                      onChange={(e) => setI("about")(e.target.value)}
+                      placeholder="Tell actors about your company — past productions, the kind of work you make, what it's like to work with you." />
+                  </div>
+                </Section>
+              </>
             )}
 
-            {/* ══════════ CASTING CALLS ══════════ */}
+            {/* ══════════ MY CASTING CALLS ══════════ */}
             {activeNav === "calls" && (
               <>
-                {formMode ? (
-                  <Section icon="🎬" title={formMode === "new" ? "New Casting Call" : "Edit Casting Call"}
-                    sub="Actors will see this once you post it" defaultOpen status="partial">
-                    <CallForm
-                      initial={editingCall || EMPTY_CALL}
-                      isEditing={formMode !== "new"}
-                      onCancel={() => setFormMode(null)}
-                      onSave={(data) => formMode === "new" ? addCall(data) : saveEditedCall(formMode, data)}
-                    />
-                  </Section>
-                ) : (
-                  <>
-                    <div className="pd-cc-toolbar">
-                      <input
-                        className="pd-input pd-cc-search"
-                        placeholder="Search your casting calls…"
-                        value={ccSearch}
-                        onChange={(e) => setCcSearch(e.target.value)}
-                      />
-                      <div className="pd-cc-filters">
-                        {["All", ...PROJECT_TYPES].map((f) => (
-                          <button
-                            key={f}
-                            className={`pd-cc-filter-btn${ccFilter === f ? " on" : ""}`}
-                            onClick={() => setCcFilter(f)}
-                          >
-                            {f}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                <div className="pd-stats">
+                  <div className="pd-stat">
+                    <div className="pd-stat-num">{calls.length}</div>
+                    <div className="pd-stat-label">Total posted</div>
+                  </div>
+                  <div className="pd-stat">
+                    <div className="pd-stat-num">{openCallsCount}</div>
+                    <div className="pd-stat-label">Currently open</div>
+                  </div>
+                  <div className="pd-stat">
+                    <div className="pd-stat-num">{applicants.length}</div>
+                    <div className="pd-stat-label">Total applicants</div>
+                  </div>
+                  <div className="pd-stat">
+                    <div className="pd-stat-num">{newApplicantsCount}</div>
+                    <div className="pd-stat-label">Awaiting review</div>
+                  </div>
+                </div>
 
-                    {filteredCalls.length === 0 ? (
-                      <div className="pd-cc-empty">
-                        {calls.length === 0
-                          ? "You haven't posted a casting call yet."
-                          : "No casting calls match your search or filter."}
-                        <div className="pd-cc-empty-cta">
-                          <button className="btn-solid-sm" onClick={() => setFormMode("new")}>+ Post Casting Call</button>
+                {callsLoading ? (
+                  <div className="pd-cc-empty">Loading your casting calls…</div>
+                ) : calls.length === 0 ? (
+                  <div className="pd-cc-empty">
+                    You haven't posted any casting calls yet.
+                    <div className="pd-cc-empty-cta">
+                      <button className="btn-solid-sm" onClick={openNewCallModal}>+ Post your first casting call</button>
+                    </div>
+                  </div>
+                ) : null}
+                {!callsLoading && calls.length > 0 && (
+                  <div className="pd-cc-grid">
+                    {calls.map((c) => (
+                      <div className="pd-cc-card" key={c.id}>
+                        <div className="pd-cc-top">
+                          <div className="pd-cc-title-wrap">
+                            <div className="pd-cc-title">{c.title}</div>
+                            <div className="pd-cc-prod">{c.type} · {c.location}</div>
+                          </div>
+                          <div className={`pd-cc-status ${c.status}`}>{c.status}</div>
+                        </div>
+                        <div className="pd-cc-meta">
+                          <span>🎂 {c.ageRange || "Any age"}</span>
+                          <span>⚧ {c.gender}</span>
+                          <span>📅 Apply by {new Date(c.deadline).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>
+                        </div>
+                        <p className="pd-cc-desc">{c.description}</p>
+                        {c.tags?.length > 0 && (
+                          <div className="pd-cc-tags">
+                            {c.tags.map((t) => <span className="pd-cc-tag" key={t}>{t}</span>)}
+                          </div>
+                        )}
+                        <div className="pd-cc-foot">
+                          <div className="pd-cc-applicants-count">
+                            <strong>{applicants.length}</strong> applicants so far
+                          </div>
+                          <div className="pd-cc-actions">
+                            <button className="btn-ghost-sm" onClick={() => openEditCallModal(c)}>Edit</button>
+                            <button className="btn-ghost-sm" onClick={() => toggleCallStatus(c.id)}>
+                              {c.status === "open" ? "Close" : "Reopen"}
+                            </button>
+                            <button className="btn-danger-sm" onClick={() => deleteCall(c.id)}>Delete</button>
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="pd-cc-grid">
-                        {filteredCalls.map((call) => (
-                          <CallCard
-                            key={call.id}
-                            call={call}
-                            onEdit={setFormMode}
-                            onDelete={setDeleteCallId}
-                            onToggleStatus={toggleCallStatus}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </>
+                    ))}
+                  </div>
                 )}
               </>
             )}
 
-            {/* ══════════ SUBMISSIONS ══════════ */}
-            {activeNav === "submissions" && (
+            {/* ══════════ APPLICANTS ══════════ */}
+            {activeNav === "applicants" && (
               <>
-                {calls.length === 0 ? (
-                  <div className="pd-cc-empty">
-                    Post a casting call first — submissions from actors will show up here once they apply.
-                    <div className="pd-cc-empty-cta">
-                      <button className="btn-solid-sm" onClick={() => { setActiveNav("calls"); setFormMode("new"); }}>
-                        + Post Casting Call
-                      </button>
-                    </div>
-                  </div>
+                <div className="pd-app-filters">
+                  {["All","New","Shortlist","Accepted","Declined"].map((f) => (
+                    <button
+                      key={f}
+                      className={`pd-app-filter-btn${appFilter === f ? " on" : ""}`}
+                      onClick={() => setAppFilter(f)}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredApplicants.length === 0 ? (
+                  <div className="pd-app-empty">No applicants in this category yet.</div>
                 ) : (
-                  calls.map((call) => (
-                    <div className="pd-sub-card" key={call.id}>
-                      <div className="pd-sub-head">
-                        <div className="pd-sub-title">{call.title}</div>
-                        <div className="pd-sub-count">{call.submissions || 0} submission{call.submissions === 1 ? "" : "s"}</div>
+                  <div className="pd-app-grid">
+                    {filteredApplicants.map((a) => (
+                      <div className="pd-app-card" key={a.id}>
+                        <div className="pd-app-avatar">{a.avatar}</div>
+                        <div className="pd-app-info">
+                          <div className="pd-app-top">
+                            <div>
+                              <div className="pd-app-name">{a.name}</div>
+                              <div className="pd-app-for">Applied for <strong>{calls[0]?.title || "a casting call"}</strong></div>
+                            </div>
+                            <span className={`pd-app-status-badge ${a.status}`}>{a.status}</span>
+                          </div>
+                          <div className="pd-app-meta">
+                            <span>🎂 {a.age}</span>
+                            <span>📍 {a.city}</span>
+                          </div>
+                          <p className="pd-app-note">{a.note}</p>
+                          <div className="pd-app-actions">
+                            {a.status !== "shortlist" && (
+                              <button className="btn-ghost-sm" onClick={() => setApplicantStatus(a.id, "shortlist")}>Shortlist</button>
+                            )}
+                            {a.status !== "accepted" && (
+                              <button className="btn-solid-sm" onClick={() => setApplicantStatus(a.id, "accepted")}>Accept</button>
+                            )}
+                            {a.status !== "declined" && (
+                              <button className="btn-danger-sm" onClick={() => setApplicantStatus(a.id, "declined")}>Decline</button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="pd-sub-empty">
-                        No submissions yet. Actor applications will appear here once they can apply through the platform.
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </>
             )}
@@ -1156,11 +1000,7 @@ export default function ProducerDashboard() {
               <div className="pd-msg-layout">
                 <div className="pd-msg-list">
                   {conversations.map((c) => (
-                    <div
-                      key={c.id}
-                      className={`pd-msg-item${activeConvo === c.id ? " on" : ""}`}
-                      onClick={() => openConvo(c.id)}
-                    >
+                    <div key={c.id} className={`pd-msg-item${activeConvo === c.id ? " on" : ""}`} onClick={() => openConvo(c.id)}>
                       <div className="pd-msg-avatar">{c.avatar}</div>
                       <div className="pd-msg-info">
                         <div className="pd-msg-name">{c.name}</div>
@@ -1171,6 +1011,7 @@ export default function ProducerDashboard() {
                     </div>
                   ))}
                 </div>
+
                 <div className="pd-thread">
                   {activeConvoObj ? (
                     <>
@@ -1183,19 +1024,16 @@ export default function ProducerDashboard() {
                       </div>
                       <div className="pd-thread-body">
                         {activeConvoObj.messages.map((m, i) => (
-                          <div key={i} className={`pd-bubble ${m.from}`}>
+                          <div className={`pd-bubble ${m.from}`} key={i}>
                             {m.text}
                             <div className="pd-bubble-time">{m.time}</div>
                           </div>
                         ))}
                       </div>
                       <div className="pd-thread-input">
-                        <input
-                          placeholder="Write a reply…"
-                          value={draft}
+                        <input placeholder="Type a message…" value={draft}
                           onChange={(e) => setDraft(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                        />
+                          onKeyDown={(e) => e.key === "Enter" && sendMessage()} />
                         <button className="btn-solid-sm" onClick={sendMessage}>Send</button>
                       </div>
                     </>
@@ -1210,9 +1048,23 @@ export default function ProducerDashboard() {
             {activeNav === "settings" && (
               <>
                 <div className="pd-settings-section">
+                  <div className="pd-settings-title">Account</div>
+                  <div className="pd-settings-sub">Your login details for Casting.Home</div>
+                  <div className="pd-grid-2">
+                    <div className="pd-field">
+                      <label className="pd-label">Email</label>
+                      <input className="pd-input" value={session?.user?.email || ""} disabled />
+                    </div>
+                    <div className="pd-field">
+                      <label className="pd-label">Account type</label>
+                      <input className="pd-input" value="Producer" disabled />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pd-settings-section">
                   <div className="pd-settings-title">Change Password</div>
-                  <div className="pd-settings-sub">Update the password used to sign in to your producer account</div>
-                  {pwErr && <div className="pd-error" style={{ marginBottom: "1rem" }}>{pwErr}</div>}
+                  <div className="pd-settings-sub">Choose a strong password you don't use elsewhere</div>
                   <div className="pd-field">
                     <label className="pd-label">Current Password</label>
                     <input className="pd-input" type="password" value={pwForm.current}
@@ -1230,43 +1082,45 @@ export default function ProducerDashboard() {
                         onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))} />
                     </div>
                   </div>
-                  <button className="btn-solid-sm" onClick={submitPasswordChange}>Update Password</button>
+                  {pwErr && <div className="pd-error">{pwErr}</div>}
+                  <div style={{ marginTop:"1rem" }}>
+                    <button className="btn-solid-sm" onClick={submitPasswordChange}>Update password</button>
+                  </div>
                 </div>
 
                 <div className="pd-settings-section">
                   <div className="pd-settings-title">Notifications</div>
-                  <div className="pd-settings-sub">Choose what you get notified about</div>
+                  <div className="pd-settings-sub">Choose what Casting.Home should email you about</div>
                   <div className="pd-toggle-row">
                     <div>
-                      <div className="pd-toggle-label">New applicants</div>
+                      <div className="pd-toggle-label">Email notifications</div>
+                      <div className="pd-toggle-desc">General account and activity emails</div>
+                    </div>
+                    <Switch on={notifs.email} onToggle={() => setNotifs((n) => ({ ...n, email: !n.email }))} />
+                  </div>
+                  <div className="pd-toggle-row">
+                    <div>
+                      <div className="pd-toggle-label">New applicant alerts</div>
                       <div className="pd-toggle-desc">Get notified when an actor applies to your casting call</div>
                     </div>
                     <Switch on={notifs.newApplicants} onToggle={() => setNotifs((n) => ({ ...n, newApplicants: !n.newApplicants }))} />
                   </div>
                   <div className="pd-toggle-row">
                     <div>
-                      <div className="pd-toggle-label">Messages</div>
-                      <div className="pd-toggle-desc">Get notified when an actor messages you</div>
+                      <div className="pd-toggle-label">Message notifications</div>
+                      <div className="pd-toggle-desc">Email me when an actor messages me</div>
                     </div>
                     <Switch on={notifs.messages} onToggle={() => setNotifs((n) => ({ ...n, messages: !n.messages }))} />
-                  </div>
-                  <div className="pd-toggle-row">
-                    <div>
-                      <div className="pd-toggle-label">Email updates</div>
-                      <div className="pd-toggle-desc">Platform news and casting tips by email</div>
-                    </div>
-                    <Switch on={notifs.email} onToggle={() => setNotifs((n) => ({ ...n, email: !n.email }))} />
                   </div>
                 </div>
 
                 <div className="pd-settings-section">
-                  <div className="pd-settings-title">Danger Zone</div>
-                  <div className="pd-settings-sub">Irreversible actions</div>
+                  <div className="pd-settings-title" style={{ color:T.red }}>Danger Zone</div>
                   <div className="pd-danger-row">
                     <div className="pd-danger-text">
-                      Deleting your account removes your company profile, all posted casting calls, and settings from this browser.
+                      Deleting your account removes your company profile, casting calls, and applicant data. This cannot be undone.
                     </div>
-                    <button className="btn-danger-sm" onClick={() => setShowDeleteAccount(true)}>Delete Account</button>
+                    <button className="btn-danger-sm" onClick={() => setShowDeleteConfirm(true)}>Delete account</button>
                   </div>
                 </div>
               </>
@@ -1276,44 +1130,108 @@ export default function ProducerDashboard() {
         </div>
       </div>
 
-      {/* ── delete account modal ── */}
-      {showDeleteAccount && (
-        <div className="pd-modal-bg" onClick={() => setShowDeleteAccount(false)}>
+      {/* ── POST / EDIT CASTING CALL MODAL ── */}
+      {showCallModal && (
+        <div className="pd-modal-bg" onClick={() => setShowCallModal(false)}>
+          <div className="pd-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pd-modal-head">
+              <div className="pd-modal-title">{editingCallId ? "Edit casting call" : "Post a casting call"}</div>
+              <button className="pd-modal-close" onClick={() => setShowCallModal(false)}>✕</button>
+            </div>
+            <div className="pd-modal-body">
+              <div className="pd-field">
+                <label className="pd-label">Title</label>
+                <input className="pd-input" value={callForm.title}
+                  onChange={(e) => setCallForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Lead Actress — Feature Film" />
+              </div>
+              <div className="pd-grid-2">
+                <div className="pd-field">
+                  <label className="pd-label">Type</label>
+                  <select className="pd-select" value={callForm.type}
+                    onChange={(e) => setCallForm((f) => ({ ...f, type: e.target.value }))}>
+                    <option>Film</option>
+                    <option>TV</option>
+                    <option>Web Series</option>
+                    <option>Ad</option>
+                    <option>Theatre</option>
+                  </select>
+                </div>
+                <div className="pd-field">
+                  <label className="pd-label">Location</label>
+                  <input className="pd-input" value={callForm.location}
+                    onChange={(e) => setCallForm((f) => ({ ...f, location: e.target.value }))}
+                    placeholder="Kathmandu" />
+                </div>
+              </div>
+              <div className="pd-grid-3">
+                <div className="pd-field">
+                  <label className="pd-label">Age Range</label>
+                  <input className="pd-input" value={callForm.ageRange}
+                    onChange={(e) => setCallForm((f) => ({ ...f, ageRange: e.target.value }))}
+                    placeholder="22–28" />
+                </div>
+                <div className="pd-field">
+                  <label className="pd-label">Gender</label>
+                  <select className="pd-select" value={callForm.gender}
+                    onChange={(e) => setCallForm((f) => ({ ...f, gender: e.target.value }))}>
+                    <option>Any</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                  </select>
+                </div>
+                <div className="pd-field">
+                  <label className="pd-label">Deadline</label>
+                  <input className="pd-input" type="date" value={callForm.deadline}
+                    onChange={(e) => setCallForm((f) => ({ ...f, deadline: e.target.value }))} />
+                </div>
+              </div>
+              <div className="pd-field">
+                <label className="pd-label">Tags (comma separated)</label>
+                <input className="pd-input" value={callForm.tags}
+                  onChange={(e) => setCallForm((f) => ({ ...f, tags: e.target.value }))}
+                  placeholder="Drama, Nepali/English" />
+              </div>
+              <div className="pd-field">
+                <label className="pd-label">Description</label>
+                <textarea className="pd-textarea" rows={4} value={callForm.description}
+                  onChange={(e) => setCallForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Describe the role, the production, and what you're looking for." />
+              </div>
+              {callErr && <div className="pd-error">{callErr}</div>}
+              <div style={{ display:"flex", gap:".75rem", justifyContent:"flex-end", marginTop:"1.25rem" }}>
+                <button className="btn-ghost-sm" onClick={() => setShowCallModal(false)}>Cancel</button>
+                <button className="btn-solid-sm" onClick={submitCall} disabled={callSubmitting}>
+                  {callSubmitting ? "Saving…" : editingCallId ? "Save changes" : "Post casting call"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE ACCOUNT CONFIRM MODAL ── */}
+      {showDeleteConfirm && (
+        <div className="pd-modal-bg" onClick={() => setShowDeleteConfirm(false)}>
           <div className="pd-modal" onClick={(e) => e.stopPropagation()}>
             <div className="pd-modal-head">
               <div className="pd-modal-title">Delete account?</div>
-              <button className="pd-modal-close" onClick={() => setShowDeleteAccount(false)}>✕</button>
+              <button className="pd-modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
             </div>
             <div className="pd-modal-body">
-              This will permanently remove your company profile, casting calls, and settings from this browser. This can't be undone.
-              <div className="pd-modal-actions">
-                <button className="btn-ghost-sm" onClick={() => setShowDeleteAccount(false)}>Cancel</button>
-                <button className="btn-danger-sm" onClick={confirmDeleteAccount}>Delete Account</button>
+              <p style={{ fontSize:13, color:"rgba(244,239,230,.5)", lineHeight:1.7, marginBottom:"1.5rem" }}>
+                This will permanently remove your company profile, casting calls, applicant records, and message history from Casting.Home. This cannot be undone.
+              </p>
+              <div style={{ display:"flex", gap:".75rem", justifyContent:"flex-end" }}>
+                <button className="btn-ghost-sm" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+                <button className="btn-danger-sm" onClick={confirmDelete}>Yes, delete my account</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── delete call modal ── */}
-      {deleteCallId && (
-        <div className="pd-modal-bg" onClick={() => setDeleteCallId(null)}>
-          <div className="pd-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="pd-modal-head">
-              <div className="pd-modal-title">Delete casting call?</div>
-              <button className="pd-modal-close" onClick={() => setDeleteCallId(null)}>✕</button>
-            </div>
-            <div className="pd-modal-body">
-              This casting call and any submission data linked to it will be removed. This can't be undone.
-              <div className="pd-modal-actions">
-                <button className="btn-ghost-sm" onClick={() => setDeleteCallId(null)}>Cancel</button>
-                <button className="btn-danger-sm" onClick={removeCall}>Delete</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* ── TOAST ── */}
       {toast && <div className={`pd-toast${toast.isErr ? " err" : ""}`}>{toast.msg}</div>}
     </>
   );
